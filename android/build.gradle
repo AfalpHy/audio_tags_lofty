@@ -1,4 +1,4 @@
-group = "com.example.audio_tags_lofty"
+group = "com.afalphy.audio_tags_lofty"
 version = "1.0-SNAPSHOT"
 
 buildscript {
@@ -25,7 +25,7 @@ apply plugin: "com.android.library"
 apply plugin: "kotlin-android"
 
 android {
-    namespace = "com.example.audio_tags_lofty"
+    namespace = "com.afalphy.audio_tags_lofty"
 
     compileSdk = 36
 

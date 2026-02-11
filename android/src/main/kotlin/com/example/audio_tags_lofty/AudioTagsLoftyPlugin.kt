@@ -1,4 +1,4 @@
-package com.example.audio_tags_lofty
+package com.afalphy.audio_tags_lofty
 
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
