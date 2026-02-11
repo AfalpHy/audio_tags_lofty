@@ -84,7 +84,7 @@ class AudioMetadata {
     return "Title: $title\n"
         "Artist: $artist\n"
         "Album: $album\n"
-        "Duration: ${duration}\n"
+        "Duration: $duration\n"
         "Lyrics: ${lyrics ?? 'N/A'}\n"
         "Picture: ${pictureBytes != null ? '${pictureBytes!.length} bytes' : 'None'}";
   }
