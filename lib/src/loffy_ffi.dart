@@ -23,7 +23,7 @@ final class LoftyMetadata extends Struct {
 }
 
 String _getLibName() {
-  if (Platform.isLinux) {
+  if (Platform.isLinux || Platform.isAndroid) {
     return 'liblofty_ffi.so';
   } else if (Platform.isWindows) {
     return 'lofty_ffi.dll';
