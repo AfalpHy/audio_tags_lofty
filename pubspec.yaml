@@ -1,7 +1,8 @@
 name: audio_tags_lofty
 description: "A new Flutter plugin project."
 version: 0.0.1
-homepage:
+homepage: https://github.com/AfalpHy/audio_tags_lofty.git
+license: "Apache-2.0"
 
 environment:
   sdk: ^3.10.7
@@ -45,7 +46,6 @@ flutter:
         ffiPlugin: true
       windows:
         ffiPlugin: true
-  license: "licenses/LOFTY_LICENSE.txt"
 
 
   # To add assets to your plugin package, add an assets section, like this:
