@@ -36,16 +36,16 @@ flutter:
   plugin:
     platforms:
       android:
-        package: com.example.audio_tags_lofty
+        package: com.afalphy.audio_tags_lofty
         pluginClass: AudioTagsLoftyPlugin
       ios:
         pluginClass: AudioTagsLoftyPlugin
       linux:
-        pluginClass: AudioTagsLoftyPlugin
+        pluginClass: ""
       macos:
-        pluginClass: AudioTagsLoftyPlugin
+        pluginClass: ""
       windows:
-        pluginClass: AudioTagsLoftyPluginCApi
+        pluginClass: ""
 
   # To add assets to your plugin package, add an assets section, like this:
   # assets:
