@@ -22,20 +22,24 @@ final class LoftyMetadata extends Struct {
   external Pointer<LoftyPicture> picture; // optional
 }
 
-String _getLibName() {
-  if (Platform.isLinux || Platform.isAndroid) {
-    return 'liblofty_ffi.so';
-  } else if (Platform.isWindows) {
-    return 'lofty_ffi.dll';
-  } else {
-    return "";
+DynamicLibrary _loadLib() {
+  if (Platform.isAndroid || Platform.isLinux) {
+    return DynamicLibrary.open('liblofty_ffi.so');
   }
+
+  if (Platform.isWindows) {
+    return DynamicLibrary.open('lofty_ffi.dll');
+  }
+
+  if (Platform.isMacOS || Platform.isIOS) {
+    // Rust staticlib is already linked into the process
+    return DynamicLibrary.process();
+  }
+
+  throw UnsupportedError('Unsupported platform');
 }
 
-/// ---------------------------
-/// Load Rust library
-/// ---------------------------
-final DynamicLibrary _lib = DynamicLibrary.open(_getLibName());
+final DynamicLibrary _lib = _loadLib();
 
 /// ---------------------------
 /// FFI function bindings
