@@ -63,18 +63,18 @@ final _loftyFreePicture = _lib
 /// Dart wrapper classes
 /// ---------------------------
 class AudioMetadata {
-  final String? title;
-  final String? artist;
-  final String? album;
-  final int durationMs;
-  final String? lyrics;
-  final Uint8List? pictureBytes;
+  String? title;
+  String? artist;
+  String? album;
+  Duration? duration;
+  String? lyrics;
+  Uint8List? pictureBytes;
 
   AudioMetadata({
     this.title,
     this.artist,
     this.album,
-    required this.durationMs,
+    this.duration,
     this.lyrics,
     this.pictureBytes,
   });
@@ -84,7 +84,7 @@ class AudioMetadata {
     return "Title: $title\n"
         "Artist: $artist\n"
         "Album: $album\n"
-        "Duration: ${Duration(milliseconds: durationMs)}\n"
+        "Duration: ${duration}\n"
         "Lyrics: ${lyrics ?? 'N/A'}\n"
         "Picture: ${pictureBytes != null ? '${pictureBytes!.length} bytes' : 'None'}";
   }
@@ -93,7 +93,7 @@ class AudioMetadata {
 /// ---------------------------
 /// Read metadata + optional picture
 /// ---------------------------
-AudioMetadata? getAudioMetadata(String path, needPicture) {
+AudioMetadata? readMetadata(String path, needPicture) {
   final pathPtr = path.toNativeUtf8();
   final metaPtr = _loftyReadMetadata(pathPtr, needPicture ? 1 : 0);
   calloc.free(pathPtr);
@@ -112,7 +112,7 @@ AudioMetadata? getAudioMetadata(String path, needPicture) {
     title: meta.title.toDartStringSafe(),
     artist: meta.artist.toDartStringSafe(),
     album: meta.album.toDartStringSafe(),
-    durationMs: meta.durationMs,
+    duration: Duration(milliseconds: meta.durationMs),
     lyrics: meta.lyrics.toDartStringSafe(),
     pictureBytes: pictureBytes,
   );
@@ -124,7 +124,7 @@ AudioMetadata? getAudioMetadata(String path, needPicture) {
 /// ---------------------------
 /// Read only picture
 /// ---------------------------
-Uint8List? getAudioPicture(String path) {
+Uint8List? readPicture(String path) {
   final pathPtr = path.toNativeUtf8();
   final picPtr = _loftyReadPicture(pathPtr);
   calloc.free(pathPtr);
