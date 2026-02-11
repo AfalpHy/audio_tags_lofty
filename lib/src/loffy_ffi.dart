@@ -24,7 +24,7 @@ final class LoftyMetadata extends Struct {
 /// ---------------------------
 /// Load Rust library
 /// ---------------------------
-final DynamicLibrary _lib = DynamicLibrary.open('lib/liblofty_ffi.so');
+final DynamicLibrary _lib = DynamicLibrary.open('liblofty_ffi.so');
 
 /// ---------------------------
 /// FFI function bindings
