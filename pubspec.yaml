@@ -36,16 +36,16 @@ flutter:
   plugin:
     platforms:
       android:
-        package: com.afalphy.audio_tags_lofty
-        pluginClass: AudioTagsLoftyPlugin
+        ffiPlugin: true
       ios:
-        pluginClass: AudioTagsLoftyPlugin
+        ffiPlugin: true
       linux:
-        pluginClass: ""
+        ffiPlugin: true
       macos:
-        pluginClass: ""
+        ffiPlugin: true
       windows:
-        pluginClass: ""
+        ffiPlugin: true
+
 
   # To add assets to your plugin package, add an assets section, like this:
   # assets:
