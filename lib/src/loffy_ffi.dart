@@ -1,4 +1,5 @@
 import 'dart:ffi';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
@@ -21,10 +22,20 @@ final class LoftyMetadata extends Struct {
   external Pointer<LoftyPicture> picture; // optional
 }
 
+String _getLibName() {
+  if (Platform.isLinux) {
+    return 'liblofty_ffi.so';
+  } else if (Platform.isWindows) {
+    return 'lofty_ffi.dll';
+  } else {
+    return "";
+  }
+}
+
 /// ---------------------------
 /// Load Rust library
 /// ---------------------------
-final DynamicLibrary _lib = DynamicLibrary.open('liblofty_ffi.so');
+final DynamicLibrary _lib = DynamicLibrary.open(_getLibName());
 
 /// ---------------------------
 /// FFI function bindings
