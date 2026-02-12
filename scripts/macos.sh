@@ -17,4 +17,7 @@ lipo -create \
   "$CRATE/target/x86_64-apple-darwin/release/liblofty_ffi.dylib" \
   -output "$OUT"
 
+install_name_tool -id @rpath/liblofty_ffi.dylib "$OUT"
+install_name_tool -add_rpath @loader_path "$OUT"
+
 codesign --force --sign - "$OUT"
