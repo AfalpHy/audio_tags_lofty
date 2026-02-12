@@ -58,6 +58,28 @@ typedef _FreeMetadataDart = void Function(Pointer<LoftyMetadata>);
 typedef _FreePictureNative = Void Function(Pointer<LoftyPicture>);
 typedef _FreePictureDart = void Function(Pointer<LoftyPicture>);
 
+typedef _WriteMetadataNative =
+    Uint8 Function(
+      Pointer<Utf8> path,
+      Pointer<Utf8> title,
+      Pointer<Utf8> artist,
+      Pointer<Utf8> album,
+      Pointer<Utf8> lyrics,
+      Pointer<Uint8> pictureData,
+      Uint64 pictureLen,
+    );
+
+typedef _WriteMetadataDart =
+    int Function(
+      Pointer<Utf8> path,
+      Pointer<Utf8> title,
+      Pointer<Utf8> artist,
+      Pointer<Utf8> album,
+      Pointer<Utf8> lyrics,
+      Pointer<Uint8> pictureData,
+      int pictureLen,
+    );
+
 final _loftyReadMetadata = _lib
     .lookupFunction<_ReadMetadataNative, _ReadMetadataDart>(
       'lofty_read_metadata',
@@ -73,6 +95,11 @@ final _loftyFreeMetadata = _lib
 
 final _loftyFreePicture = _lib
     .lookupFunction<_FreePictureNative, _FreePictureDart>('lofty_free_picture');
+
+final _loftyWriteMetadata = _lib
+    .lookupFunction<_WriteMetadataNative, _WriteMetadataDart>(
+      'lofty_write_metadata',
+    );
 
 /// ---------------------------
 /// Dart wrapper classes
@@ -150,6 +177,62 @@ Uint8List? readPicture(String path) {
   final data = Uint8List.fromList(pic.data.asTypedList(pic.len));
   _loftyFreePicture(picPtr);
   return data;
+}
+
+bool writeMetadata({
+  required String path,
+  String? title,
+  String? artist,
+  String? album,
+  String? lyrics,
+  Uint8List? pictureBytes,
+  bool deletePicture = false,
+}) {
+  final pathPtr = path.toNativeUtf8();
+
+  Pointer<Utf8> strPtr(String? value) {
+    if (value == null) return nullptr;
+    return value.toNativeUtf8();
+  }
+
+  final titlePtr = strPtr(title);
+  final artistPtr = strPtr(artist);
+  final albumPtr = strPtr(album);
+  final lyricsPtr = strPtr(lyrics);
+
+  Pointer<Uint8> picturePtr = nullptr;
+  int pictureLen = 0;
+
+  if (pictureBytes != null) {
+    picturePtr = calloc<Uint8>(pictureBytes.length);
+    picturePtr.asTypedList(pictureBytes.length).setAll(0, pictureBytes);
+    pictureLen = pictureBytes.length;
+  } else if (deletePicture) {
+    // data == null && len != 0 → delete
+    picturePtr = nullptr;
+    pictureLen = 1;
+  }
+  // else: data == null && len == 0 → do not modify
+
+  final result = _loftyWriteMetadata(
+    pathPtr,
+    titlePtr,
+    artistPtr,
+    albumPtr,
+    lyricsPtr,
+    picturePtr,
+    pictureLen,
+  );
+
+  // -------- free memory --------
+  calloc.free(pathPtr);
+  if (titlePtr != nullptr) calloc.free(titlePtr);
+  if (artistPtr != nullptr) calloc.free(artistPtr);
+  if (albumPtr != nullptr) calloc.free(albumPtr);
+  if (lyricsPtr != nullptr) calloc.free(lyricsPtr);
+  if (picturePtr != nullptr) calloc.free(picturePtr);
+
+  return result != 0;
 }
 
 /// ---------------------------

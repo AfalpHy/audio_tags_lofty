@@ -3,8 +3,14 @@ use std::ptr;
 
 use lofty::file::TaggedFileExt;
 use lofty::prelude::AudioFile;
-use lofty::probe::Probe;
-use lofty::tag::ItemKey;
+
+
+use lofty::{
+    config::WriteOptions,
+    picture::{Picture, PictureType},
+    probe::Probe,
+    tag::ItemKey,
+};
 
 /// ---------------------------
 /// Picture struct (bytes)
@@ -190,4 +196,158 @@ pub extern "C" fn lofty_free_picture(pic: *mut LoftyPicture) {
         let pic = Box::from_raw(pic);
         drop(Vec::from_raw_parts(pic.data, pic.len, pic.len));
     }
+}
+
+/// ------------------------------------------------
+/// Helper: apply a string metadata field
+///
+/// Rules:
+/// - value == NULL  -> do not modify
+/// - value == ""    -> delete the field
+/// - otherwise      -> replace the field
+/// ------------------------------------------------
+fn apply_string_field(
+    tag: &mut lofty::tag::Tag,
+    key: ItemKey,
+    value: *const c_char,
+) -> Result<(), ()> {
+    if value.is_null() {
+        // Do not modify
+        return Ok(());
+    }
+
+    let value = unsafe {
+        CStr::from_ptr(value)
+            .to_str()
+            .map_err(|_| ())?
+    };
+
+    if value.is_empty() {
+        // Delete field
+        tag.remove_key(key);
+    } else {
+        // Replace field
+        tag.remove_key(key);
+        tag.insert_text(key, value.to_string());
+    }
+
+    Ok(())
+}
+
+/// ------------------------------------------------
+/// Helper: apply picture (cover art)
+///
+/// Rules:
+/// - data == NULL && len == 0  -> do not modify
+/// - data == NULL && len != 0  -> delete picture
+/// - data != NULL && len > 0   -> write / replace picture
+/// - otherwise                -> invalid
+/// ------------------------------------------------
+fn apply_picture_field(
+    tag: &mut lofty::tag::Tag,
+    data: *const u8,
+    len: usize,
+) -> Result<(), ()> {
+    // data == NULL
+    if data.is_null() {
+        if len == 0 {
+            // Do not modify
+            return Ok(());
+        } else {
+            // Delete all pictures
+            while !tag.pictures().is_empty() {
+                tag.remove_picture(0);
+            }
+            return Ok(());
+        }
+    }
+
+    // data != NULL
+    if len == 0 {
+        // Invalid combination
+        return Err(());
+    }
+
+    let bytes = unsafe {
+        std::slice::from_raw_parts(data, len)
+    };
+
+    // Remove existing pictures
+    while !tag.pictures().is_empty() {
+        tag.remove_picture(0);
+    }
+
+    // Build picture using builder API (lofty 0.23.x)
+    let picture = Picture::unchecked(bytes.to_vec())
+        .pic_type(PictureType::CoverFront)
+        .build();
+
+    tag.push_picture(picture);
+
+    Ok(())
+}
+
+/// ------------------------------------------------
+/// FFI: write metadata in a single call
+///
+/// String field rules:
+/// - NULL  -> do not modify
+/// - ""    -> delete
+/// - other -> replace
+///
+/// Picture rules:
+/// - data == NULL && len == 0  -> do not modify
+/// - data == NULL && len != 0  -> delete
+/// - data != NULL && len > 0   -> write / replace
+/// ------------------------------------------------
+#[unsafe(no_mangle)]
+pub extern "C" fn lofty_write_metadata(
+    path: *const c_char,
+    title: *const c_char,
+    artist: *const c_char,
+    album: *const c_char,
+    lyrics: *const c_char,
+    picture_data: *const u8,
+    picture_len: usize,
+) -> bool {
+    if path.is_null() {
+        return false;
+    }
+
+    let path = unsafe {
+        match CStr::from_ptr(path).to_str() {
+            Ok(v) => v,
+            Err(_) => return false,
+        }
+    };
+
+    let mut tagged_file = match Probe::open(path).and_then(|p| p.read()) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+
+    let tag = match tagged_file.primary_tag_mut() {
+        Some(t) => t,
+        None => return false,
+    };
+
+    if apply_string_field(tag, ItemKey::TrackTitle, title).is_err() {
+        return false;
+    }
+    if apply_string_field(tag, ItemKey::TrackArtist, artist).is_err() {
+        return false;
+    }
+    if apply_string_field(tag, ItemKey::AlbumTitle, album).is_err() {
+        return false;
+    }
+    if apply_string_field(tag, ItemKey::Lyrics, lyrics).is_err() {
+        return false;
+    }
+    if apply_picture_field(tag, picture_data, picture_len).is_err() {
+        return false;
+    }
+
+    tagged_file
+        .save_to_path(path, WriteOptions::default())
+        .is_ok()
 }
