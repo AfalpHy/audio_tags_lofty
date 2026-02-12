@@ -15,7 +15,7 @@ class AudioMetadata {
 }
 
 final metadata = readMetadata(path, true /* need picture */);
-final pictureBytes = readPicture(song.filePath);
+final pictureBytes = readPicture(path);
 ~~~
 
 ## Important
