@@ -1,33 +1,24 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
+# Resolve script directory
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-CRATE="$ROOT/rust/lofty_ffi"
-OUT="$ROOT/android/src/main/jniLibs"
 
-TARGETS=(
-  aarch64-linux-android
-  armv7-linux-androideabi
-  x86_64-linux-android
-)
+# Rust FFI crate directory
+CRATE_DIR="$ROOT/rust/lofty_ffi"
 
-ABIS=(
-  arm64-v8a
-  armeabi-v7a
-  x86_64
-)
+# Android jniLibs output directory
+OUT_DIR="$ROOT/android/src/main/jniLibs"
 
-echo "== Android build =="
-rm -rf "$OUT"
-cargo clean --manifest-path "$CRATE/Cargo.toml"
+# Build
+rm -rf "$OUT_DIR"
+mkdir -p "$OUT_DIR"
+cd "$CRATE_DIR"
+cargo clean --manifest-path "$CRATE_DIR/Cargo.toml"
 
-for i in "${!TARGETS[@]}"; do
-  target="${TARGETS[$i]}"
-  abi="${ABIS[$i]}"
-
-  cargo build --release --target "$target" --manifest-path "$CRATE/Cargo.toml"
-
-  mkdir -p "$OUT/$abi"
-  cp "$CRATE/target/$target/release/liblofty_ffi.so" \
-     "$OUT/$abi/liblofty_ffi.so"
-done
+cargo ndk \
+  -t arm64-v8a \
+  -t armeabi-v7a \
+  -t x86_64 \
+  -o "$OUT_DIR" \
+  build --release
