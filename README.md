@@ -1,6 +1,6 @@
 # audio_tags_lofty
 
-A Flutter FFI plugin based on [lofty](https://github.com/Serial-ATA/lofty-rs.git) for reading audio tags (writing not implemented yet).
+A Flutter FFI plugin based on [lofty](https://github.com/Serial-ATA/lofty-rs.git) for reading and writing audio tags.
 
 ## Usage
 
@@ -16,6 +16,27 @@ class AudioMetadata {
 
 final metadata = readMetadata(path, true /* need picture */);
 final pictureBytes = readPicture(path);
+
+/// ------------------------------------------------
+/// String field rules:
+/// - NULL  -> do not modify
+/// - ""    -> delete
+/// - other -> replace
+///
+/// Picture rules:
+/// - pictureBytes != NULL -> write / replace
+/// - pictureBytes == NULL && deletePicture == false -> do not modify
+/// - pictureBytes == NULL && deletePicture == true  -> delete
+/// ------------------------------------------------
+final success = writeMetadata(
+  path: path,
+  title: title,
+  artist: artist,
+  album: album,
+  lyrics: lyrics,
+  pictureBytes: pictureBytes,
+  deletePicture: false
+);
 ~~~
 
 ## Important

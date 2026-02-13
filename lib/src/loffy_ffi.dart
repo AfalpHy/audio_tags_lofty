@@ -135,7 +135,7 @@ class AudioMetadata {
 /// ---------------------------
 /// Read metadata + optional picture
 /// ---------------------------
-AudioMetadata? readMetadata(String path, needPicture) {
+AudioMetadata? readMetadata(String path, bool needPicture) {
   final pathPtr = path.toNativeUtf8();
   final metaPtr = _loftyReadMetadata(pathPtr, needPicture ? 1 : 0);
   calloc.free(pathPtr);
@@ -179,6 +179,17 @@ Uint8List? readPicture(String path) {
   return data;
 }
 
+/// ------------------------------------------------
+/// String field rules:
+/// - NULL  -> do not modify
+/// - ""    -> delete
+/// - other -> replace
+///
+/// Picture rules:
+/// - pictureBytes != NULL -> write / replace
+/// - pictureBytes == NULL && deletePicture == false -> do not modify
+/// - pictureBytes == NULL && deletePicture == true  -> delete
+/// ------------------------------------------------
 bool writeMetadata({
   required String path,
   String? title,
