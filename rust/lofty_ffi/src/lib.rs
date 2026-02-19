@@ -4,9 +4,8 @@ use std::ptr;
 use lofty::file::TaggedFileExt;
 use lofty::prelude::AudioFile;
 
-
 use lofty::{
-    config::WriteOptions,
+    config::{ParseOptions, ParsingMode, WriteOptions},
     picture::{Picture, PictureType},
     probe::Probe,
     tag::ItemKey,
@@ -53,9 +52,15 @@ pub extern "C" fn lofty_read_metadata(
         }
     };
 
-    let tagged_file = match Probe::open(path).and_then(|p| p.read()) {
+    let tagged_file = match Probe::open(path).and_then(|p| {
+        p.options(ParseOptions::new().parsing_mode(ParsingMode::Relaxed))
+            .read()
+    }) {
         Ok(v) => v,
-        Err(_) => return ptr::null_mut(),
+        Err(e) => {
+            eprintln!("[lofty] failed to open/read file: {}", e);
+            return ptr::null_mut();
+        }
     };
 
     let tag = tagged_file.primary_tag();
@@ -158,7 +163,10 @@ pub extern "C" fn lofty_read_picture(path: *const c_char) -> *mut LoftyPicture {
         }
     };
 
-    let tagged_file = match Probe::open(path).and_then(|p| p.read()) {
+    let tagged_file = match Probe::open(path).and_then(|p| {
+        p.options(ParseOptions::new().parsing_mode(ParsingMode::Relaxed))
+            .read()
+    }) {
         Ok(v) => v,
         Err(_) => return ptr::null_mut(),
     };
@@ -216,11 +224,7 @@ fn apply_string_field(
         return Ok(());
     }
 
-    let value = unsafe {
-        CStr::from_ptr(value)
-            .to_str()
-            .map_err(|_| ())?
-    };
+    let value = unsafe { CStr::from_ptr(value).to_str().map_err(|_| ())? };
 
     if value.is_empty() {
         // Delete field
@@ -243,11 +247,7 @@ fn apply_string_field(
 /// - data != NULL && len > 0   -> write / replace picture
 /// - otherwise                -> invalid
 /// ------------------------------------------------
-fn apply_picture_field(
-    tag: &mut lofty::tag::Tag,
-    data: *const u8,
-    len: usize,
-) -> Result<(), ()> {
+fn apply_picture_field(tag: &mut lofty::tag::Tag, data: *const u8, len: usize) -> Result<(), ()> {
     // data == NULL
     if data.is_null() {
         if len == 0 {
@@ -268,9 +268,7 @@ fn apply_picture_field(
         return Err(());
     }
 
-    let bytes = unsafe {
-        std::slice::from_raw_parts(data, len)
-    };
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
 
     // Remove existing pictures
     while !tag.pictures().is_empty() {

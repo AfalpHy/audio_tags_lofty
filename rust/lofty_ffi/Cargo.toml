@@ -5,7 +5,7 @@ edition = "2024"
 publish = false
 
 [lib]
-crate-type = ["staticlib", "cdylib"]
+crate-type = ["staticlib", "cdylib", "rlib"]
 
 [dependencies]
 lofty = "0.23"
