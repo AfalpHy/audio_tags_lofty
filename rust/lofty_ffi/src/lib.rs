@@ -1,6 +1,7 @@
 use std::ffi::{c_char, CStr, CString};
 use std::ptr;
 
+use lofty::file::TaggedFile;
 use lofty::file::TaggedFileExt;
 use lofty::prelude::AudioFile;
 
@@ -40,8 +41,18 @@ fn to_c_string(s: &str) -> *mut c_char {
         .unwrap_or(ptr::null_mut())
 }
 
-fn read_tagged_file(path: &str) -> Option<lofty::file::TaggedFile> {
+fn read_tagged_file(path: &str) -> Option<TaggedFile> {
+    if let Ok(tagged) = Probe::open(path)
+        .ok()?
+        .options(ParseOptions::new().parsing_mode(ParsingMode::Relaxed))
+        .read()
+    {
+        return Some(tagged);
+    }
+
     Probe::open(path)
+        .ok()?
+        .guess_file_type()
         .ok()?
         .options(ParseOptions::new().parsing_mode(ParsingMode::Relaxed))
         .read()
