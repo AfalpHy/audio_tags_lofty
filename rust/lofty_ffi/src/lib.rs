@@ -8,21 +8,15 @@ use lofty::{
     config::{ParseOptions, ParsingMode, WriteOptions},
     picture::{Picture, PictureType},
     probe::Probe,
-    tag::ItemKey,
+    tag::{ItemKey, Tag},
 };
 
-/// ---------------------------
-/// Picture struct (bytes)
-/// ---------------------------
 #[repr(C)]
 pub struct LoftyPicture {
     pub data: *mut u8,
     pub len: usize,
 }
 
-/// ---------------------------
-/// Metadata struct (FFI-safe)
-/// ---------------------------
 #[repr(C)]
 pub struct LoftyMetadata {
     pub title: *mut c_char,
@@ -30,96 +24,100 @@ pub struct LoftyMetadata {
     pub album: *mut c_char,
     pub duration_ms: u64,
     pub lyrics: *mut c_char,
-    pub picture: *mut LoftyPicture, // optional picture
+    pub picture: *mut LoftyPicture,
 }
 
-/// ---------------------------
-/// Read metadata + optional picture
-/// ---------------------------
+fn c_path<'a>(ptr: *const c_char) -> Option<&'a str> {
+    if ptr.is_null() {
+        return None;
+    }
+    unsafe { CStr::from_ptr(ptr).to_str().ok() }
+}
+
+fn to_c_string(s: &str) -> *mut c_char {
+    CString::new(s)
+        .map(|c| c.into_raw())
+        .unwrap_or(ptr::null_mut())
+}
+
+fn read_tagged_file(path: &str) -> Option<lofty::file::TaggedFile> {
+    Probe::open(path)
+        .ok()?
+        .options(ParseOptions::new().parsing_mode(ParsingMode::Relaxed))
+        .read()
+        .ok()
+}
+
+fn build_picture(tag: Option<&Tag>) -> *mut LoftyPicture {
+    let picture = tag
+        .and_then(|t| t.pictures().first())
+        .map(|p| p.data().to_vec());
+
+    match picture {
+        Some(mut data) => {
+            let len = data.len();
+            let ptr = data.as_mut_ptr();
+            std::mem::forget(data);
+            Box::into_raw(Box::new(LoftyPicture { data: ptr, len }))
+        }
+        None => ptr::null_mut(),
+    }
+}
+
+fn get_string(tag: Option<&Tag>, key: ItemKey) -> *mut c_char {
+    tag.and_then(|t| t.get_string(key))
+        .map(|s| to_c_string(s.as_ref()))
+        .unwrap_or(ptr::null_mut())
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn lofty_read_metadata(
     path: *const c_char,
     need_picture: bool,
 ) -> *mut LoftyMetadata {
-    if path.is_null() {
-        return ptr::null_mut();
-    }
-
-    let path = unsafe {
-        match CStr::from_ptr(path).to_str() {
-            Ok(v) => v,
-            Err(_) => return ptr::null_mut(),
-        }
+    let path = match c_path(path) {
+        Some(p) => p,
+        None => return ptr::null_mut(),
     };
 
-    let tagged_file = match Probe::open(path).and_then(|p| {
-        p.options(ParseOptions::new().parsing_mode(ParsingMode::Relaxed))
-            .read()
-    }) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("[lofty] failed to open/read file: {}", e);
-            return ptr::null_mut();
-        }
+    let tagged_file = match read_tagged_file(path) {
+        Some(v) => v,
+        None => return ptr::null_mut(),
     };
 
     let tag = tagged_file.primary_tag();
 
-    let get_string = |key: ItemKey| -> *mut c_char {
-        tag.and_then(|t| t.get_string(key))
-            .map(|s| {
-                // s is Cow<'_, str>, convert explicitly to &str
-                let s_ref: &str = s.as_ref();
-                CString::new(s_ref).unwrap().into_raw()
-            })
-            .unwrap_or(ptr::null_mut())
-    };
-
-    // Lyrics support
-    let lyrics = tag
-        .and_then(|t| t.get_string(ItemKey::Lyrics))
-        .map(|s| {
-            let s_ref: &str = s.as_ref(); // explicitly convert Cow<str> -> &str
-            CString::new(s_ref).unwrap().into_raw()
-        })
-        .unwrap_or(ptr::null_mut());
-
-    // Picture support
-    let picture = if need_picture {
-        if let Some(t) = tag {
-            let pics = t.pictures();
-            if !pics.is_empty() {
-                let p = &pics[0];
-                let mut data = p.data().to_vec();
-                let len = data.len();
-                let ptr = data.as_mut_ptr();
-                std::mem::forget(data);
-                Box::into_raw(Box::new(LoftyPicture { data: ptr, len }))
-            } else {
-                ptr::null_mut()
-            }
+    let meta = LoftyMetadata {
+        title: get_string(tag, ItemKey::TrackTitle),
+        artist: get_string(tag, ItemKey::TrackArtist),
+        album: get_string(tag, ItemKey::AlbumTitle),
+        lyrics: get_string(tag, ItemKey::Lyrics),
+        duration_ms: tagged_file.properties().duration().as_millis() as u64,
+        picture: if need_picture {
+            build_picture(tag)
         } else {
             ptr::null_mut()
-        }
-    } else {
-        ptr::null_mut()
-    };
-
-    let meta = LoftyMetadata {
-        title: get_string(ItemKey::TrackTitle),
-        artist: get_string(ItemKey::TrackArtist),
-        album: get_string(ItemKey::AlbumTitle),
-        duration_ms: tagged_file.properties().duration().as_millis() as u64,
-        lyrics,
-        picture,
+        },
     };
 
     Box::into_raw(Box::new(meta))
 }
 
-/// ---------------------------
-/// Free metadata
-/// ---------------------------
+#[unsafe(no_mangle)]
+pub extern "C" fn lofty_read_picture(path: *const c_char) -> *mut LoftyPicture {
+    let path = match c_path(path) {
+        Some(p) => p,
+        None => return ptr::null_mut(),
+    };
+
+    let tagged_file = match read_tagged_file(path) {
+        Some(v) => v,
+        None => return ptr::null_mut(),
+    };
+
+    build_picture(tagged_file.primary_tag())
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn lofty_free_metadata(meta: *mut LoftyMetadata) {
     if meta.is_null() {
@@ -147,53 +145,6 @@ pub extern "C" fn lofty_free_metadata(meta: *mut LoftyMetadata) {
     }
 }
 
-/// ---------------------------
-/// Read first embedded picture (or NULL)
-/// ---------------------------
-#[unsafe(no_mangle)]
-pub extern "C" fn lofty_read_picture(path: *const c_char) -> *mut LoftyPicture {
-    if path.is_null() {
-        return ptr::null_mut();
-    }
-
-    let path = unsafe {
-        match CStr::from_ptr(path).to_str() {
-            Ok(v) => v,
-            Err(_) => return ptr::null_mut(),
-        }
-    };
-
-    let tagged_file = match Probe::open(path).and_then(|p| {
-        p.options(ParseOptions::new().parsing_mode(ParsingMode::Relaxed))
-            .read()
-    }) {
-        Ok(v) => v,
-        Err(_) => return ptr::null_mut(),
-    };
-
-    let tag = match tagged_file.primary_tag() {
-        Some(t) => t,
-        None => return ptr::null_mut(),
-    };
-
-    let pictures = tag.pictures();
-    if pictures.is_empty() {
-        return ptr::null_mut();
-    }
-    let picture = &pictures[0];
-
-    let mut data = picture.data().to_vec();
-    let len = data.len();
-    let ptr = data.as_mut_ptr();
-
-    std::mem::forget(data);
-
-    Box::into_raw(Box::new(LoftyPicture { data: ptr, len }))
-}
-
-/// ---------------------------
-/// Free picture bytes
-/// ---------------------------
 #[unsafe(no_mangle)]
 pub extern "C" fn lofty_free_picture(pic: *mut LoftyPicture) {
     if pic.is_null() {
@@ -206,76 +157,53 @@ pub extern "C" fn lofty_free_picture(pic: *mut LoftyPicture) {
     }
 }
 
-/// ------------------------------------------------
-/// Helper: apply a string metadata field
-///
 /// Rules:
 /// - value == NULL  -> do not modify
 /// - value == ""    -> delete the field
 /// - otherwise      -> replace the field
-/// ------------------------------------------------
-fn apply_string_field(
-    tag: &mut lofty::tag::Tag,
-    key: ItemKey,
-    value: *const c_char,
-) -> Result<(), ()> {
+fn apply_string_field(tag: &mut Tag, key: ItemKey, value: *const c_char) -> Result<(), ()> {
     if value.is_null() {
-        // Do not modify
         return Ok(());
     }
 
     let value = unsafe { CStr::from_ptr(value).to_str().map_err(|_| ())? };
 
-    if value.is_empty() {
-        // Delete field
-        tag.remove_key(key);
-    } else {
-        // Replace field
-        tag.remove_key(key);
+    tag.remove_key(key);
+
+    if !value.is_empty() {
         tag.insert_text(key, value.to_string());
     }
 
     Ok(())
 }
 
-/// ------------------------------------------------
-/// Helper: apply picture (cover art)
-///
 /// Rules:
 /// - data == NULL && len == 0  -> do not modify
 /// - data == NULL && len != 0  -> delete picture
 /// - data != NULL && len > 0   -> write / replace picture
-/// - otherwise                -> invalid
-/// ------------------------------------------------
-fn apply_picture_field(tag: &mut lofty::tag::Tag, data: *const u8, len: usize) -> Result<(), ()> {
-    // data == NULL
+/// - otherwise                 -> invalid
+fn apply_picture_field(tag: &mut Tag, data: *const u8, len: usize) -> Result<(), ()> {
     if data.is_null() {
         if len == 0 {
-            // Do not modify
-            return Ok(());
-        } else {
-            // Delete all pictures
-            while !tag.pictures().is_empty() {
-                tag.remove_picture(0);
-            }
             return Ok(());
         }
+
+        while !tag.pictures().is_empty() {
+            tag.remove_picture(0);
+        }
+        return Ok(());
     }
 
-    // data != NULL
     if len == 0 {
-        // Invalid combination
         return Err(());
     }
 
     let bytes = unsafe { std::slice::from_raw_parts(data, len) };
 
-    // Remove existing pictures
     while !tag.pictures().is_empty() {
         tag.remove_picture(0);
     }
 
-    // Build picture using builder API (lofty 0.23.x)
     let picture = Picture::unchecked(bytes.to_vec())
         .pic_type(PictureType::CoverFront)
         .build();
@@ -285,19 +213,6 @@ fn apply_picture_field(tag: &mut lofty::tag::Tag, data: *const u8, len: usize) -
     Ok(())
 }
 
-/// ------------------------------------------------
-/// FFI: write metadata in a single call
-///
-/// String field rules:
-/// - NULL  -> do not modify
-/// - ""    -> delete
-/// - other -> replace
-///
-/// Picture rules:
-/// - data == NULL && len == 0  -> do not modify
-/// - data == NULL && len != 0  -> delete
-/// - data != NULL && len > 0   -> write / replace
-/// ------------------------------------------------
 #[unsafe(no_mangle)]
 pub extern "C" fn lofty_write_metadata(
     path: *const c_char,
@@ -308,20 +223,14 @@ pub extern "C" fn lofty_write_metadata(
     picture_data: *const u8,
     picture_len: usize,
 ) -> bool {
-    if path.is_null() {
-        return false;
-    }
-
-    let path = unsafe {
-        match CStr::from_ptr(path).to_str() {
-            Ok(v) => v,
-            Err(_) => return false,
-        }
+    let path = match c_path(path) {
+        Some(p) => p,
+        None => return false,
     };
 
-    let mut tagged_file = match Probe::open(path).and_then(|p| p.read()) {
-        Ok(v) => v,
-        Err(_) => return false,
+    let mut tagged_file = match read_tagged_file(path) {
+        Some(v) => v,
+        None => return false,
     };
 
     let tag = match tagged_file.primary_tag_mut() {
@@ -329,19 +238,12 @@ pub extern "C" fn lofty_write_metadata(
         None => return false,
     };
 
-    if apply_string_field(tag, ItemKey::TrackTitle, title).is_err() {
-        return false;
-    }
-    if apply_string_field(tag, ItemKey::TrackArtist, artist).is_err() {
-        return false;
-    }
-    if apply_string_field(tag, ItemKey::AlbumTitle, album).is_err() {
-        return false;
-    }
-    if apply_string_field(tag, ItemKey::Lyrics, lyrics).is_err() {
-        return false;
-    }
-    if apply_picture_field(tag, picture_data, picture_len).is_err() {
+    if apply_string_field(tag, ItemKey::TrackTitle, title).is_err()
+        || apply_string_field(tag, ItemKey::TrackArtist, artist).is_err()
+        || apply_string_field(tag, ItemKey::AlbumTitle, album).is_err()
+        || apply_string_field(tag, ItemKey::Lyrics, lyrics).is_err()
+        || apply_picture_field(tag, picture_data, picture_len).is_err()
+    {
         return false;
     }
 
