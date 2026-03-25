@@ -1,8 +1,7 @@
 use std::ffi::{c_char, CStr, CString};
 use std::ptr;
 
-use lofty::file::TaggedFile;
-use lofty::file::TaggedFileExt;
+use lofty::file::{TaggedFile, TaggedFileExt};
 use lofty::prelude::AudioFile;
 
 use lofty::{
@@ -24,11 +23,14 @@ pub struct LoftyMetadata {
     pub artist: *mut c_char,
     pub album: *mut c_char,
     pub genre: *mut c_char,
+    pub year: u32,
     pub track: u32,
+    pub track_total: u32,
     pub disc: u32,
-    pub duration_ms: u64,
+    pub disc_total: u32,
     pub bitrate: u32,
     pub samplerate: u32,
+    pub duration_ms: u64,
     pub lyrics: *mut c_char,
     pub picture: *mut LoftyPicture,
 }
@@ -86,6 +88,13 @@ fn get_string(tag: Option<&Tag>, key: ItemKey) -> *mut c_char {
         .unwrap_or(ptr::null_mut())
 }
 
+fn get_year(tag: Option<&Tag>) -> u32 {
+    tag.and_then(|t| t.get_string(ItemKey::RecordingDate))
+        .and_then(|s| s.get(0..4))
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(0)
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn lofty_read_metadata(
     path: *const c_char,
@@ -109,12 +118,20 @@ pub extern "C" fn lofty_read_metadata(
         artist: get_string(tag, ItemKey::TrackArtist),
         album: get_string(tag, ItemKey::AlbumTitle),
         genre: get_string(tag, ItemKey::Genre),
+
+        year: get_year(tag),
+
         track: tag.and_then(|t| t.track()).unwrap_or(0) as u32,
+        track_total: tag.and_then(|t| t.track_total()).unwrap_or(0) as u32,
+
         disc: tag.and_then(|t| t.disk()).unwrap_or(0) as u32,
-        lyrics: get_string(tag, ItemKey::Lyrics),
-        duration_ms: props.duration().as_millis() as u64,
+        disc_total: tag.and_then(|t| t.disk_total()).unwrap_or(0) as u32,
+
         bitrate: props.audio_bitrate().unwrap_or(0) as u32,
         samplerate: props.sample_rate().unwrap_or(0) as u32,
+
+        duration_ms: props.duration().as_millis() as u64,
+        lyrics: get_string(tag, ItemKey::Lyrics),
         picture: if need_picture {
             build_picture(tag)
         } else {
@@ -202,6 +219,48 @@ fn apply_string_field(tag: &mut Tag, key: ItemKey, value: *const c_char) -> Resu
     Ok(())
 }
 
+fn get_u32(ptr: *const u32) -> Option<u32> {
+    if ptr.is_null() {
+        None
+    } else {
+        Some(unsafe { *ptr })
+    }
+}
+
+fn apply_year_field(tag: &mut Tag, value: Option<u32>) {
+    if value.is_none() {
+        return;
+    }
+
+    tag.remove_key(ItemKey::RecordingDate);
+
+    if let Some(v) = value {
+        if v != 0 {
+            tag.insert_text(ItemKey::RecordingDate, v.to_string());
+        }
+    }
+}
+
+fn apply_number_pair(
+    tag: &mut Tag,
+    current: Option<u32>,
+    total: Option<u32>,
+    set_current: fn(&mut Tag, u32),
+    set_total: fn(&mut Tag, u32),
+) {
+    if let Some(c) = current {
+        if c != 0 {
+            set_current(tag, c);
+        }
+    }
+
+    if let Some(t) = total {
+        if t != 0 {
+            set_total(tag, t);
+        }
+    }
+}
+
 /// Rules:
 /// - data == NULL && len == 0  -> do not modify
 /// - data == NULL && len != 0  -> delete picture
@@ -245,6 +304,11 @@ pub extern "C" fn lofty_write_metadata(
     artist: *const c_char,
     album: *const c_char,
     lyrics: *const c_char,
+    year: *const u32,
+    track: *const u32,
+    track_total: *const u32,
+    disc: *const u32,
+    disc_total: *const u32,
     picture_data: *const u8,
     picture_len: usize,
 ) -> bool {
@@ -271,6 +335,24 @@ pub extern "C" fn lofty_write_metadata(
     {
         return false;
     }
+
+    apply_year_field(tag, get_u32(year));
+
+    apply_number_pair(
+        tag,
+        get_u32(track),
+        get_u32(track_total),
+        Tag::set_track,
+        Tag::set_track_total,
+    );
+
+    apply_number_pair(
+        tag,
+        get_u32(disc),
+        get_u32(disc_total),
+        Tag::set_disk,
+        Tag::set_disk_total,
+    );
 
     tagged_file
         .save_to_path(path, WriteOptions::default())

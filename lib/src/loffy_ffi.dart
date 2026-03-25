@@ -4,9 +4,6 @@ import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
-/// ---------------------------
-/// FFI structs
-/// ---------------------------
 final class LoftyPicture extends Struct {
   external Pointer<Uint8> data;
   @Uint64()
@@ -20,10 +17,19 @@ final class LoftyMetadata extends Struct {
   external Pointer<Utf8> genre;
 
   @Uint32()
+  external int year;
+
+  @Uint32()
   external int track;
 
   @Uint32()
+  external int trackTotal;
+
+  @Uint32()
   external int disc;
+
+  @Uint32()
+  external int discTotal;
 
   @Uint64()
   external int durationMs;
@@ -42,24 +48,17 @@ DynamicLibrary _loadLib() {
   if (Platform.isAndroid || Platform.isLinux) {
     return DynamicLibrary.open('liblofty_ffi.so');
   }
-
   if (Platform.isWindows) {
     return DynamicLibrary.open('lofty_ffi.dll');
   }
-
   if (Platform.isMacOS || Platform.isIOS) {
-    // Rust staticlib is already linked into the process
     return DynamicLibrary.process();
   }
-
   throw UnsupportedError('Unsupported platform');
 }
 
 final DynamicLibrary _lib = _loadLib();
 
-/// ---------------------------
-/// FFI function bindings
-/// ---------------------------
 typedef _ReadMetadataNative =
     Pointer<LoftyMetadata> Function(Pointer<Utf8> path, Uint8 needPicture);
 typedef _ReadMetadataDart =
@@ -81,6 +80,11 @@ typedef _WriteMetadataNative =
       Pointer<Utf8> artist,
       Pointer<Utf8> album,
       Pointer<Utf8> lyrics,
+      Pointer<Uint32> year,
+      Pointer<Uint32> track,
+      Pointer<Uint32> trackTotal,
+      Pointer<Uint32> disc,
+      Pointer<Uint32> discTotal,
       Pointer<Uint8> pictureData,
       Uint64 pictureLen,
     );
@@ -92,6 +96,11 @@ typedef _WriteMetadataDart =
       Pointer<Utf8> artist,
       Pointer<Utf8> album,
       Pointer<Utf8> lyrics,
+      Pointer<Uint32> year,
+      Pointer<Uint32> track,
+      Pointer<Uint32> trackTotal,
+      Pointer<Uint32> disc,
+      Pointer<Uint32> discTotal,
       Pointer<Uint8> pictureData,
       int pictureLen,
     );
@@ -117,17 +126,19 @@ final _loftyWriteMetadata = _lib
       'lofty_write_metadata',
     );
 
-/// ---------------------------
-/// Dart wrapper classes
-/// ---------------------------
 class AudioMetadata {
   String? title;
   String? artist;
   String? album;
   String? genre;
 
+  int? year;
+
   int? track;
+  int? trackTotal;
+
   int? disc;
+  int? discTotal;
 
   int? bitrate;
   int? samplerate;
@@ -141,8 +152,11 @@ class AudioMetadata {
     this.artist,
     this.album,
     this.genre,
+    this.year,
     this.track,
+    this.trackTotal,
     this.disc,
+    this.discTotal,
     this.bitrate,
     this.samplerate,
     this.duration,
@@ -156,8 +170,9 @@ class AudioMetadata {
         "Artist: $artist\n"
         "Album: $album\n"
         "Genre: $genre\n"
-        "Track: $track\n"
-        "Disc: $disc\n"
+        "Year: $year\n"
+        "Track: $track/$trackTotal\n"
+        "Disc: $disc/$discTotal\n"
         "Bitrate: $bitrate\n"
         "SampleRate: $samplerate\n"
         "Duration: $duration\n"
@@ -166,9 +181,6 @@ class AudioMetadata {
   }
 }
 
-/// ---------------------------
-/// Read metadata + optional picture
-/// ---------------------------
 AudioMetadata? readMetadata(String path, bool needPicture) {
   final pathPtr = path.toNativeUtf8();
   final metaPtr = _loftyReadMetadata(pathPtr, needPicture ? 1 : 0);
@@ -189,8 +201,11 @@ AudioMetadata? readMetadata(String path, bool needPicture) {
     artist: meta.artist.toDartStringSafe(),
     album: meta.album.toDartStringSafe(),
     genre: meta.genre.toDartStringSafe(),
+    year: meta.year == 0 ? null : meta.year,
     track: meta.track == 0 ? null : meta.track,
+    trackTotal: meta.trackTotal == 0 ? null : meta.trackTotal,
     disc: meta.disc == 0 ? null : meta.disc,
+    discTotal: meta.discTotal == 0 ? null : meta.discTotal,
     bitrate: meta.bitrate == 0 ? null : meta.bitrate,
     samplerate: meta.samplerate == 0 ? null : meta.samplerate,
     duration: Duration(milliseconds: meta.durationMs),
@@ -206,9 +221,6 @@ Future<AudioMetadata?> readMetadataAsync(String path, bool needPicture) async {
   return Isolate.run(() => readMetadata(path, needPicture));
 }
 
-/// ---------------------------
-/// Read only picture
-/// ---------------------------
 Uint8List? readPicture(String path) {
   final pathPtr = path.toNativeUtf8();
   final picPtr = _loftyReadPicture(pathPtr);
@@ -243,6 +255,11 @@ bool writeMetadata({
   String? artist,
   String? album,
   String? lyrics,
+  int? year,
+  int? track,
+  int? trackTotal,
+  int? disc,
+  int? discTotal,
   Uint8List? pictureBytes,
   bool deletePicture = false,
 }) {
@@ -253,10 +270,23 @@ bool writeMetadata({
     return value.toNativeUtf8();
   }
 
+  Pointer<Uint32> intPtr(int? value) {
+    if (value == null) return nullptr;
+    final p = calloc<Uint32>();
+    p.value = value;
+    return p;
+  }
+
   final titlePtr = strPtr(title);
   final artistPtr = strPtr(artist);
   final albumPtr = strPtr(album);
   final lyricsPtr = strPtr(lyrics);
+
+  final yearPtr = intPtr(year);
+  final trackPtr = intPtr(track);
+  final trackTotalPtr = intPtr(trackTotal);
+  final discPtr = intPtr(disc);
+  final discTotalPtr = intPtr(discTotal);
 
   Pointer<Uint8> picturePtr = nullptr;
   int pictureLen = 0;
@@ -266,11 +296,9 @@ bool writeMetadata({
     picturePtr.asTypedList(pictureBytes.length).setAll(0, pictureBytes);
     pictureLen = pictureBytes.length;
   } else if (deletePicture) {
-    // data == null && len != 0 → delete
     picturePtr = nullptr;
     pictureLen = 1;
   }
-  // else: data == null && len == 0 → do not modify
 
   final result = _loftyWriteMetadata(
     pathPtr,
@@ -278,24 +306,64 @@ bool writeMetadata({
     artistPtr,
     albumPtr,
     lyricsPtr,
+    yearPtr,
+    trackPtr,
+    trackTotalPtr,
+    discPtr,
+    discTotalPtr,
     picturePtr,
     pictureLen,
   );
 
-  // -------- free memory --------
   calloc.free(pathPtr);
   if (titlePtr != nullptr) calloc.free(titlePtr);
   if (artistPtr != nullptr) calloc.free(artistPtr);
   if (albumPtr != nullptr) calloc.free(albumPtr);
   if (lyricsPtr != nullptr) calloc.free(lyricsPtr);
+
+  if (yearPtr != nullptr) calloc.free(yearPtr);
+  if (trackPtr != nullptr) calloc.free(trackPtr);
+  if (trackTotalPtr != nullptr) calloc.free(trackTotalPtr);
+  if (discPtr != nullptr) calloc.free(discPtr);
+  if (discTotalPtr != nullptr) calloc.free(discTotalPtr);
+
   if (picturePtr != nullptr) calloc.free(picturePtr);
 
   return result != 0;
 }
 
-/// ---------------------------
-/// Extension: safely convert nullable Pointer
-/// ---------------------------
+Future<bool> writeMetadataAsync({
+  required String path,
+  String? title,
+  String? artist,
+  String? album,
+  String? lyrics,
+  int? year,
+  int? track,
+  int? trackTotal,
+  int? disc,
+  int? discTotal,
+  Uint8List? pictureBytes,
+  bool deletePicture = false,
+}) async {
+  return Isolate.run(
+    () => writeMetadata(
+      path: path,
+      title: title,
+      artist: artist,
+      album: album,
+      lyrics: lyrics,
+      year: year,
+      track: track,
+      trackTotal: trackTotal,
+      disc: disc,
+      discTotal: discTotal,
+      pictureBytes: pictureBytes,
+      deletePicture: deletePicture,
+    ),
+  );
+}
+
 extension PointerUtf8Safe on Pointer<Utf8> {
   String? toDartStringSafe() {
     if (this == nullptr) return null;

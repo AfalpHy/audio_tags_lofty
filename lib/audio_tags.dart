@@ -5,4 +5,5 @@ export 'package:audio_tags_lofty/src/loffy_ffi.dart'
         readMetadataAsync,
         readPicture,
         readPictureAsync,
-        writeMetadata;
+        writeMetadata,
+        writeMetadataAsync;

@@ -29,9 +29,13 @@ class AudioMetadata {
   String? artist;
   String? album;
   String? genre;
+  int? year;
 
   int? track;
+  int? trackTotal;
+
   int? disc;
+  int? discTotal;
 
   int? bitrate;
   int? samplerate;
@@ -60,6 +64,12 @@ final success = writeMetadata(
   title: title,
   artist: artist,
   album: album,
+  genre: genre,
+  year: year,
+  track: track,
+  trackTotal: trackTotal,
+  disc: disc,
+  discTotal: discTotal,
   lyrics: lyrics,
   pictureBytes: pictureBytes,
   deletePicture: false
