@@ -303,6 +303,7 @@ pub extern "C" fn lofty_write_metadata(
     title: *const c_char,
     artist: *const c_char,
     album: *const c_char,
+    genre: *const c_char,
     lyrics: *const c_char,
     year: *const u32,
     track: *const u32,
@@ -330,6 +331,7 @@ pub extern "C" fn lofty_write_metadata(
     if apply_string_field(tag, ItemKey::TrackTitle, title).is_err()
         || apply_string_field(tag, ItemKey::TrackArtist, artist).is_err()
         || apply_string_field(tag, ItemKey::AlbumTitle, album).is_err()
+        || apply_string_field(tag, ItemKey::Genre, genre).is_err()
         || apply_string_field(tag, ItemKey::Lyrics, lyrics).is_err()
         || apply_picture_field(tag, picture_data, picture_len).is_err()
     {

@@ -79,6 +79,7 @@ typedef _WriteMetadataNative =
       Pointer<Utf8> title,
       Pointer<Utf8> artist,
       Pointer<Utf8> album,
+      Pointer<Utf8> genre,
       Pointer<Utf8> lyrics,
       Pointer<Uint32> year,
       Pointer<Uint32> track,
@@ -95,6 +96,7 @@ typedef _WriteMetadataDart =
       Pointer<Utf8> title,
       Pointer<Utf8> artist,
       Pointer<Utf8> album,
+      Pointer<Utf8> genre,
       Pointer<Utf8> lyrics,
       Pointer<Uint32> year,
       Pointer<Uint32> track,
@@ -254,6 +256,7 @@ bool writeMetadata({
   String? title,
   String? artist,
   String? album,
+  String? genre,
   String? lyrics,
   int? year,
   int? track,
@@ -280,6 +283,7 @@ bool writeMetadata({
   final titlePtr = strPtr(title);
   final artistPtr = strPtr(artist);
   final albumPtr = strPtr(album);
+  final genrePtr = strPtr(genre);
   final lyricsPtr = strPtr(lyrics);
 
   final yearPtr = intPtr(year);
@@ -305,6 +309,7 @@ bool writeMetadata({
     titlePtr,
     artistPtr,
     albumPtr,
+    genrePtr,
     lyricsPtr,
     yearPtr,
     trackPtr,
@@ -319,6 +324,7 @@ bool writeMetadata({
   if (titlePtr != nullptr) calloc.free(titlePtr);
   if (artistPtr != nullptr) calloc.free(artistPtr);
   if (albumPtr != nullptr) calloc.free(albumPtr);
+  if (genrePtr != nullptr) calloc.free(genrePtr);
   if (lyricsPtr != nullptr) calloc.free(lyricsPtr);
 
   if (yearPtr != nullptr) calloc.free(yearPtr);
@@ -337,6 +343,7 @@ Future<bool> writeMetadataAsync({
   String? title,
   String? artist,
   String? album,
+  String? genre,
   String? lyrics,
   int? year,
   int? track,
@@ -352,6 +359,7 @@ Future<bool> writeMetadataAsync({
       title: title,
       artist: artist,
       album: album,
+      genre: genre,
       lyrics: lyrics,
       year: year,
       track: track,
