@@ -1,5 +1,6 @@
 import 'dart:ffi';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
@@ -16,10 +17,25 @@ final class LoftyMetadata extends Struct {
   external Pointer<Utf8> title;
   external Pointer<Utf8> artist;
   external Pointer<Utf8> album;
+  external Pointer<Utf8> genre;
+
+  @Uint32()
+  external int track;
+
+  @Uint32()
+  external int disc;
+
   @Uint64()
   external int durationMs;
+
+  @Uint32()
+  external int bitrate;
+
+  @Uint32()
+  external int samplerate;
+
   external Pointer<Utf8> lyrics;
-  external Pointer<LoftyPicture> picture; // optional
+  external Pointer<LoftyPicture> picture;
 }
 
 DynamicLibrary _loadLib() {
@@ -108,6 +124,14 @@ class AudioMetadata {
   String? title;
   String? artist;
   String? album;
+  String? genre;
+
+  int? track;
+  int? disc;
+
+  int? bitrate;
+  int? samplerate;
+
   Duration? duration;
   String? lyrics;
   Uint8List? pictureBytes;
@@ -116,6 +140,11 @@ class AudioMetadata {
     this.title,
     this.artist,
     this.album,
+    this.genre,
+    this.track,
+    this.disc,
+    this.bitrate,
+    this.samplerate,
     this.duration,
     this.lyrics,
     this.pictureBytes,
@@ -126,6 +155,11 @@ class AudioMetadata {
     return "Title: $title\n"
         "Artist: $artist\n"
         "Album: $album\n"
+        "Genre: $genre\n"
+        "Track: $track\n"
+        "Disc: $disc\n"
+        "Bitrate: $bitrate\n"
+        "SampleRate: $samplerate\n"
         "Duration: $duration\n"
         "Lyrics: ${lyrics ?? 'N/A'}\n"
         "Picture: ${pictureBytes != null ? '${pictureBytes!.length} bytes' : 'None'}";
@@ -154,6 +188,11 @@ AudioMetadata? readMetadata(String path, bool needPicture) {
     title: meta.title.toDartStringSafe(),
     artist: meta.artist.toDartStringSafe(),
     album: meta.album.toDartStringSafe(),
+    genre: meta.genre.toDartStringSafe(),
+    track: meta.track == 0 ? null : meta.track,
+    disc: meta.disc == 0 ? null : meta.disc,
+    bitrate: meta.bitrate == 0 ? null : meta.bitrate,
+    samplerate: meta.samplerate == 0 ? null : meta.samplerate,
     duration: Duration(milliseconds: meta.durationMs),
     lyrics: meta.lyrics.toDartStringSafe(),
     pictureBytes: pictureBytes,
@@ -161,6 +200,10 @@ AudioMetadata? readMetadata(String path, bool needPicture) {
 
   _loftyFreeMetadata(metaPtr);
   return result;
+}
+
+Future<AudioMetadata?> readMetadataAsync(String path, bool needPicture) async {
+  return Isolate.run(() => readMetadata(path, needPicture));
 }
 
 /// ---------------------------
@@ -177,6 +220,10 @@ Uint8List? readPicture(String path) {
   final data = Uint8List.fromList(pic.data.asTypedList(pic.len));
   _loftyFreePicture(picPtr);
   return data;
+}
+
+Future<Uint8List?> readPictureAsync(String path) async {
+  return Isolate.run(() => readPicture(path));
 }
 
 /// ------------------------------------------------

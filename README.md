@@ -28,6 +28,14 @@ class AudioMetadata {
   String? title;
   String? artist;
   String? album;
+  String? genre;
+
+  int? track;
+  int? disc;
+
+  int? bitrate;
+  int? samplerate;
+
   Duration? duration;
   String? lyrics;
   Uint8List? pictureBytes;

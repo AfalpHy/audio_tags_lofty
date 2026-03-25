@@ -9,7 +9,7 @@ use lofty::{
     config::{ParseOptions, ParsingMode, WriteOptions},
     picture::{Picture, PictureType},
     probe::Probe,
-    tag::{ItemKey, Tag},
+    tag::{Accessor, ItemKey, Tag},
 };
 
 #[repr(C)]
@@ -23,7 +23,12 @@ pub struct LoftyMetadata {
     pub title: *mut c_char,
     pub artist: *mut c_char,
     pub album: *mut c_char,
+    pub genre: *mut c_char,
+    pub track: u32,
+    pub disc: u32,
     pub duration_ms: u64,
+    pub bitrate: u32,
+    pub samplerate: u32,
     pub lyrics: *mut c_char,
     pub picture: *mut LoftyPicture,
 }
@@ -97,13 +102,19 @@ pub extern "C" fn lofty_read_metadata(
     };
 
     let tag = tagged_file.primary_tag();
+    let props = tagged_file.properties();
 
     let meta = LoftyMetadata {
         title: get_string(tag, ItemKey::TrackTitle),
         artist: get_string(tag, ItemKey::TrackArtist),
         album: get_string(tag, ItemKey::AlbumTitle),
+        genre: get_string(tag, ItemKey::Genre),
+        track: tag.and_then(|t| t.track()).unwrap_or(0) as u32,
+        disc: tag.and_then(|t| t.disk()).unwrap_or(0) as u32,
         lyrics: get_string(tag, ItemKey::Lyrics),
-        duration_ms: tagged_file.properties().duration().as_millis() as u64,
+        duration_ms: props.duration().as_millis() as u64,
+        bitrate: props.audio_bitrate().unwrap_or(0) as u32,
+        samplerate: props.sample_rate().unwrap_or(0) as u32,
         picture: if need_picture {
             build_picture(tag)
         } else {
@@ -146,6 +157,9 @@ pub extern "C" fn lofty_free_metadata(meta: *mut LoftyMetadata) {
         }
         if !meta.album.is_null() {
             drop(CString::from_raw(meta.album));
+        }
+        if !meta.genre.is_null() {
+            drop(CString::from_raw(meta.genre));
         }
         if !meta.lyrics.is_null() {
             drop(CString::from_raw(meta.lyrics));
