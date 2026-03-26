@@ -31,14 +31,14 @@ final class LoftyMetadata extends Struct {
   @Uint32()
   external int discTotal;
 
-  @Uint64()
-  external int durationMs;
-
   @Uint32()
   external int bitrate;
 
   @Uint32()
   external int samplerate;
+
+  @Uint64()
+  external int durationMs;
 
   external Pointer<Utf8> lyrics;
   external Pointer<LoftyPicture> picture;
