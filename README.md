@@ -29,6 +29,7 @@ class AudioMetadata {
   String? artist;
   String? album;
   String? genre;
+
   int? year;
 
   int? track;

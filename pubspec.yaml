@@ -1,5 +1,5 @@
 name: audio_tags_lofty
-description: "A new Flutter FFI plugin project."
+description: "A Flutter FFI plugin based on lofty for reading and writing audio tags."
 version: 0.0.1
 homepage: https://github.com/AfalpHy/audio_tags_lofty
 license: "Apache-2.0"
