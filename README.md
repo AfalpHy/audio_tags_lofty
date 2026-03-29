@@ -75,8 +75,3 @@ final success = writeMetadata(
   deletePicture: false
 );
 ~~~
-
-## Important
-
-On iOS, set **Strip Linked Product** to **No** in Xcode.  
-Currently, I haven’t found a way to prevent the function symbols from being removed by the linker.

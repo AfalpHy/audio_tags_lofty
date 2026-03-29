@@ -18,6 +18,5 @@ lipo -create \
   -output "$OUT"
 
 install_name_tool -id @rpath/liblofty_ffi.dylib "$OUT"
-install_name_tool -add_rpath @loader_path "$OUT"
 
 codesign --force --sign - "$OUT"
