@@ -11,6 +11,11 @@ use lofty::{
     tag::{Accessor, ItemKey, Tag},
 };
 
+mod http_file;
+use http_file::HttpFile;
+
+use tempfile::NamedTempFile;
+
 #[repr(C)]
 pub struct LoftyPicture {
     pub data: *mut u8,
@@ -49,6 +54,28 @@ fn to_c_string(s: &str) -> *mut c_char {
 }
 
 fn read_tagged_file(path: &str) -> Option<TaggedFile> {
+    if path.starts_with("http://") || path.starts_with("https://") {
+        {
+            let http = HttpFile::new(path)?;
+
+            if let Ok(tagged) = Probe::new(http)
+                .options(ParseOptions::new().parsing_mode(ParsingMode::Relaxed))
+                .read()
+            {
+                return Some(tagged);
+            }
+        }
+
+        let http = HttpFile::new(path)?;
+
+        return Probe::new(http)
+            .guess_file_type()
+            .ok()?
+            .options(ParseOptions::new().parsing_mode(ParsingMode::Relaxed))
+            .read()
+            .ok();
+    }
+
     if let Ok(tagged) = Probe::open(path)
         .ok()?
         .options(ParseOptions::new().parsing_mode(ParsingMode::Relaxed))
@@ -313,12 +340,33 @@ pub extern "C" fn lofty_write_metadata(
     picture_data: *const u8,
     picture_len: usize,
 ) -> bool {
-    let path = match c_path(path) {
+    let original_path = match c_path(path) {
         Some(p) => p,
         None => return false,
     };
 
-    let mut tagged_file = match read_tagged_file(path) {
+    let mut temp_file_opt: Option<NamedTempFile> = None;
+    let path_str: &str;
+
+    if original_path.starts_with("http://") || original_path.starts_with("https://") {
+        let tmp = match download_http_to_temp(original_path) {
+            Some(f) => f,
+            None => return false,
+        };
+        // Move tmp into temp_file_opt first
+        temp_file_opt = Some(tmp);
+        // Then safely get a reference to the path
+        path_str = temp_file_opt
+            .as_ref()
+            .unwrap()
+            .path()
+            .to_str()
+            .unwrap_or("");
+    } else {
+        path_str = original_path;
+    }
+
+    let mut tagged_file = match read_tagged_file(path_str) {
         Some(v) => v,
         None => return false,
     };
@@ -356,7 +404,42 @@ pub extern "C" fn lofty_write_metadata(
         Tag::set_disk_total,
     );
 
-    tagged_file
-        .save_to_path(path, WriteOptions::default())
-        .is_ok()
+    let result = tagged_file
+        .save_to_path(path_str, WriteOptions::default())
+        .is_ok();
+
+    if let Some(tmp) = temp_file_opt {
+        if !upload_temp_to_http(original_path, &tmp) {
+            return false;
+        }
+    }
+
+    result
+}
+
+fn download_http_to_temp(url: &str) -> Option<tempfile::NamedTempFile> {
+    let client = reqwest::blocking::Client::new();
+    let mut resp = client.get(url).send().ok()?;
+    if !resp.status().is_success() {
+        eprintln!("Download failed: {}", resp.status());
+        return None;
+    }
+    let mut tmp = tempfile::NamedTempFile::new().ok()?;
+    std::io::copy(&mut resp, &mut tmp).ok()?;
+    Some(tmp)
+}
+
+fn upload_temp_to_http(url: &str, tmp: &tempfile::NamedTempFile) -> bool {
+    let client = reqwest::blocking::Client::new();
+    let bytes = match std::fs::read(tmp.path()) {
+        Ok(b) => b,
+        Err(_) => return false,
+    };
+
+    client
+        .put(url)
+        .body(bytes)
+        .send()
+        .map(|r| r.status().is_success())
+        .unwrap_or(false)
 }
