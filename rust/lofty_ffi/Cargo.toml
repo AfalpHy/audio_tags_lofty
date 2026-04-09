@@ -1,6 +1,6 @@
 [package]
 name = "lofty_ffi"
-version = "0.1.0"
+version = "0.0.2"
 edition = "2024"
 publish = false
 
@@ -11,3 +11,4 @@ crate-type = ["cdylib", "rlib"]
 lofty = "0.23"
 tempfile = "3.6" 
 reqwest = { version = "0.11", features = ["blocking"] }
+openssl = { version = "0.10", features = ["vendored"] }
