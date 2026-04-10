@@ -55,7 +55,7 @@ fn to_c_string(s: &str) -> *mut c_char {
 
 fn read_tagged_file(path: &str, need_picture: bool) -> Option<TaggedFile> {
     if path.starts_with("http://") || path.starts_with("https://") {
-        let http = HttpFile::new(path, if need_picture { 512 } else { 128 })?;
+        let http = HttpFile::new(path, if need_picture { 1024 } else { 512 })?;
 
         return Probe::new(http)
             .guess_file_type()
