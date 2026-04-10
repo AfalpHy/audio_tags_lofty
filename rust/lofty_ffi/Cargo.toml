@@ -10,5 +10,4 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 lofty = "0.23"
 tempfile = "3.6" 
-reqwest = { version = "0.11", features = ["blocking"] }
-openssl = { version = "0.10", features = ["vendored"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls", "rustls-tls-native-roots"] }

@@ -53,42 +53,31 @@ fn to_c_string(s: &str) -> *mut c_char {
         .unwrap_or(ptr::null_mut())
 }
 
-fn read_tagged_file(path: &str) -> Option<TaggedFile> {
+fn read_tagged_file(path: &str, need_picture: bool) -> Option<TaggedFile> {
     if path.starts_with("http://") || path.starts_with("https://") {
-        {
-            let http = HttpFile::new(path)?;
-
-            if let Ok(tagged) = Probe::new(http)
-                .options(ParseOptions::new().parsing_mode(ParsingMode::Relaxed))
-                .read()
-            {
-                return Some(tagged);
-            }
-        }
-
-        let http = HttpFile::new(path)?;
+        let http = HttpFile::new(path, if need_picture { 512 } else { 128 })?;
 
         return Probe::new(http)
             .guess_file_type()
             .ok()?
-            .options(ParseOptions::new().parsing_mode(ParsingMode::Relaxed))
+            .options(
+                ParseOptions::new()
+                    .parsing_mode(ParsingMode::Relaxed)
+                    .read_cover_art(need_picture),
+            )
             .read()
             .ok();
-    }
-
-    if let Ok(tagged) = Probe::open(path)
-        .ok()?
-        .options(ParseOptions::new().parsing_mode(ParsingMode::Relaxed))
-        .read()
-    {
-        return Some(tagged);
     }
 
     Probe::open(path)
         .ok()?
         .guess_file_type()
         .ok()?
-        .options(ParseOptions::new().parsing_mode(ParsingMode::Relaxed))
+        .options(
+            ParseOptions::new()
+                .parsing_mode(ParsingMode::Relaxed)
+                .read_cover_art(need_picture),
+        )
         .read()
         .ok()
 }
@@ -132,7 +121,7 @@ pub extern "C" fn lofty_read_metadata(
         None => return ptr::null_mut(),
     };
 
-    let tagged_file = match read_tagged_file(path) {
+    let tagged_file = match read_tagged_file(path, need_picture) {
         Some(v) => v,
         None => return ptr::null_mut(),
     };
@@ -176,7 +165,7 @@ pub extern "C" fn lofty_read_picture(path: *const c_char) -> *mut LoftyPicture {
         None => return ptr::null_mut(),
     };
 
-    let tagged_file = match read_tagged_file(path) {
+    let tagged_file = match read_tagged_file(path, true) {
         Some(v) => v,
         None => return ptr::null_mut(),
     };
@@ -366,7 +355,7 @@ pub extern "C" fn lofty_write_metadata(
         path_str = original_path;
     }
 
-    let mut tagged_file = match read_tagged_file(path_str) {
+    let mut tagged_file = match read_tagged_file(path_str, true) {
         Some(v) => v,
         None => return false,
     };
