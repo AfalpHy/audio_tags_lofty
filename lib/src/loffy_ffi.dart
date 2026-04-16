@@ -133,6 +133,12 @@ typedef _WriteMetadataDart =
       Pointer<Utf8> password,
     );
 
+typedef _LastErrorNative = Pointer<Utf8> Function();
+typedef _LastErrorDart = Pointer<Utf8> Function();
+
+typedef _ClearErrorNative = Void Function();
+typedef _ClearErrorDart = void Function();
+
 final _loftyReadMetadata = _lib
     .lookupFunction<_ReadMetadataNative, _ReadMetadataDart>(
       'lofty_read_metadata',
@@ -153,6 +159,29 @@ final _loftyWriteMetadata = _lib
     .lookupFunction<_WriteMetadataNative, _WriteMetadataDart>(
       'lofty_write_metadata',
     );
+
+final _loftyLastError = _lib.lookupFunction<_LastErrorNative, _LastErrorDart>(
+  'lofty_last_error',
+);
+
+final _loftyClearError = _lib
+    .lookupFunction<_ClearErrorNative, _ClearErrorDart>('lofty_clear_error');
+
+void _clearRustError() {
+  _loftyClearError();
+}
+
+void _throwIfError() {
+  final errPtr = _loftyLastError();
+
+  if (errPtr != nullptr) {
+    final msg = "[audio_tags_lofty] ${errPtr.toDartString()}";
+
+    _clearRustError();
+
+    throw Exception(msg);
+  }
+}
 
 class AudioMetadata {
   String? title;
@@ -230,7 +259,10 @@ AudioMetadata? readMetadata(
   if (userPtr != nullptr) calloc.free(userPtr);
   if (passPtr != nullptr) calloc.free(passPtr);
 
-  if (metaPtr == nullptr) return null;
+  if (metaPtr == nullptr) {
+    _throwIfError();
+    return null;
+  }
 
   final meta = metaPtr.ref;
 
@@ -284,7 +316,10 @@ Uint8List? readPicture(String path, {String? username, String? password}) {
   if (userPtr != nullptr) calloc.free(userPtr);
   if (passPtr != nullptr) calloc.free(passPtr);
 
-  if (picPtr == nullptr) return null;
+  if (picPtr == nullptr) {
+    _throwIfError();
+    return null;
+  }
 
   final pic = picPtr.ref;
   final data = Uint8List.fromList(pic.data.asTypedList(pic.len));
@@ -406,7 +441,12 @@ bool writeMetadata({
 
   if (picturePtr != nullptr) calloc.free(picturePtr);
 
-  return result != 0;
+  if (result == 0) {
+    _throwIfError();
+    return false;
+  }
+
+  return true;
 }
 
 Future<bool> writeMetadataAsync({

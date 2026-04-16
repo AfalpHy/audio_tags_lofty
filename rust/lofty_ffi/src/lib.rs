@@ -1,5 +1,6 @@
 use std::ffi::{c_char, CStr, CString};
 use std::ptr;
+use std::sync::Mutex;
 
 use lofty::file::{TaggedFile, TaggedFileExt};
 use lofty::prelude::AudioFile;
@@ -15,6 +16,37 @@ mod http_file;
 use http_file::HttpFile;
 
 use tempfile::NamedTempFile;
+
+static LAST_ERROR: Mutex<Option<CString>> = Mutex::new(None);
+
+fn set_last_error(msg: String) {
+    let mut guard = LAST_ERROR.lock().unwrap();
+    *guard = CString::new(msg).ok();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn lofty_last_error() -> *const c_char {
+    let guard = LAST_ERROR.lock().unwrap();
+    match &*guard {
+        Some(s) => s.as_ptr(),
+        None => ptr::null(),
+    }
+}
+
+macro_rules! err {
+    ($msg:expr) => {{
+        set_last_error($msg.to_string());
+    }};
+    ($fmt:expr, $($arg:tt)*) => {{
+        set_last_error(format!($fmt, $($arg)*));
+    }};
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn lofty_clear_error() {
+    let mut guard = LAST_ERROR.lock().unwrap();
+    *guard = None;
+}
 
 #[repr(C)]
 pub struct LoftyPicture {
@@ -42,9 +74,18 @@ pub struct LoftyMetadata {
 
 fn c_path<'a>(ptr: *const c_char) -> Option<&'a str> {
     if ptr.is_null() {
+        err!("null pointer");
         return None;
     }
-    unsafe { CStr::from_ptr(ptr).to_str().ok() }
+    unsafe {
+        match CStr::from_ptr(ptr).to_str() {
+            Ok(s) => Some(s),
+            Err(_) => {
+                err!("invalid utf-8 string");
+                None
+            }
+        }
+    }
 }
 
 fn to_c_string(s: &str) -> *mut c_char {
@@ -60,36 +101,73 @@ fn read_tagged_file(
     password: Option<&str>,
 ) -> Option<TaggedFile> {
     if path.starts_with("http://") || path.starts_with("https://") {
-        let http = HttpFile::new(
+        let http = match HttpFile::new(
             path,
             if need_picture { 1024 } else { 512 },
             username,
             password,
-        )?;
+        ) {
+            Some(v) => v,
+            None => {
+                err!("HttpFile::new failed");
+                return None;
+            }
+        };
 
-        return Probe::new(http)
-            .guess_file_type()
-            .ok()?
+        let probe = match Probe::new(http).guess_file_type() {
+            Ok(p) => p,
+            Err(_) => {
+                err!("guess_file_type failed");
+                return None;
+            }
+        };
+
+        return match probe
             .options(
                 ParseOptions::new()
                     .parsing_mode(ParsingMode::Relaxed)
                     .read_cover_art(need_picture),
             )
             .read()
-            .ok();
+        {
+            Ok(v) => Some(v),
+            Err(e) => {
+                err!("read http file failed: {:?}", e);
+                None
+            }
+        };
     }
 
-    Probe::open(path)
-        .ok()?
-        .guess_file_type()
-        .ok()?
+    let probe = match Probe::open(path) {
+        Ok(p) => p,
+        Err(e) => {
+            err!("open file failed: {:?}", e);
+            return None;
+        }
+    };
+
+    let probe = match probe.guess_file_type() {
+        Ok(p) => p,
+        Err(_) => {
+            err!("guess_file_type failed");
+            return None;
+        }
+    };
+
+    match probe
         .options(
             ParseOptions::new()
                 .parsing_mode(ParsingMode::Relaxed)
                 .read_cover_art(need_picture),
         )
         .read()
-        .ok()
+    {
+        Ok(v) => Some(v),
+        Err(e) => {
+            err!("read file failed: {:?}", e);
+            None
+        }
+    }
 }
 
 fn build_picture(tag: Option<&Tag>) -> *mut LoftyPicture {
@@ -104,7 +182,10 @@ fn build_picture(tag: Option<&Tag>) -> *mut LoftyPicture {
             std::mem::forget(data);
             Box::into_raw(Box::new(LoftyPicture { data: ptr, len }))
         }
-        None => ptr::null_mut(),
+        None => {
+            err!("no picture found");
+            ptr::null_mut()
+        }
     }
 }
 
@@ -149,18 +230,13 @@ pub extern "C" fn lofty_read_metadata(
         artist: get_string(tag, ItemKey::TrackArtist),
         album: get_string(tag, ItemKey::AlbumTitle),
         genre: get_string(tag, ItemKey::Genre),
-
         year: get_year(tag),
-
         track: tag.and_then(|t| t.track()).unwrap_or(0) as u32,
         track_total: tag.and_then(|t| t.track_total()).unwrap_or(0) as u32,
-
         disc: tag.and_then(|t| t.disk()).unwrap_or(0) as u32,
         disc_total: tag.and_then(|t| t.disk_total()).unwrap_or(0) as u32,
-
         bitrate: props.audio_bitrate().unwrap_or(0) as u32,
         samplerate: props.sample_rate().unwrap_or(0) as u32,
-
         duration_ms: props.duration().as_millis() as u64,
         lyrics: get_string(tag, ItemKey::Lyrics),
         picture: if need_picture {
@@ -192,7 +268,8 @@ pub extern "C" fn lofty_read_picture(
         None => return ptr::null_mut(),
     };
 
-    build_picture(tagged_file.primary_tag())
+    let pic = build_picture(tagged_file.primary_tag());
+    pic
 }
 
 #[unsafe(no_mangle)]
@@ -246,7 +323,15 @@ fn apply_string_field(tag: &mut Tag, key: ItemKey, value: *const c_char) -> Resu
         return Ok(());
     }
 
-    let value = unsafe { CStr::from_ptr(value).to_str().map_err(|_| ())? };
+    let value = unsafe {
+        match CStr::from_ptr(value).to_str() {
+            Ok(v) => v,
+            Err(_) => {
+                err!("invalid utf-8 string");
+                return Err(());
+            }
+        }
+    };
 
     tag.remove_key(key);
 
@@ -317,6 +402,7 @@ fn apply_picture_field(tag: &mut Tag, data: *const u8, len: usize) -> Result<(),
     }
 
     if len == 0 {
+        err!("invalid picture data");
         return Err(());
     }
 
@@ -367,11 +453,12 @@ pub extern "C" fn lofty_write_metadata(
     if original_path.starts_with("http://") || original_path.starts_with("https://") {
         let tmp = match download_http_to_temp(original_path, username, password) {
             Some(f) => f,
-            None => return false,
+            None => {
+                err!("download_http_to_temp failed");
+                return false;
+            }
         };
-        // Move tmp into temp_file_opt first
         temp_file_opt = Some(tmp);
-        // Then safely get a reference to the path
         path_str = temp_file_opt
             .as_ref()
             .unwrap()
@@ -389,7 +476,10 @@ pub extern "C" fn lofty_write_metadata(
 
     let tag = match tagged_file.primary_tag_mut() {
         Some(t) => t,
-        None => return false,
+        None => {
+            err!("no primary tag");
+            return false;
+        }
     };
 
     if apply_string_field(tag, ItemKey::TrackTitle, title).is_err()
@@ -399,6 +489,7 @@ pub extern "C" fn lofty_write_metadata(
         || apply_string_field(tag, ItemKey::Lyrics, lyrics).is_err()
         || apply_picture_field(tag, picture_data, picture_len).is_err()
     {
+        err!("apply field failed");
         return false;
     }
 
@@ -420,12 +511,17 @@ pub extern "C" fn lofty_write_metadata(
         Tag::set_disk_total,
     );
 
-    let result = tagged_file
-        .save_to_path(path_str, WriteOptions::default())
-        .is_ok();
+    let result = match tagged_file.save_to_path(path_str, WriteOptions::default()) {
+        Ok(_) => true,
+        Err(e) => {
+            err!("save_to_path failed: {:?}", e);
+            false
+        }
+    };
 
     if let Some(tmp) = temp_file_opt {
         if !upload_temp_to_http(original_path, &tmp, username, password) {
+            err!("upload_temp_to_http failed");
             return false;
         }
     }
@@ -446,13 +542,31 @@ fn download_http_to_temp(
         req = req.basic_auth(u, Some(p));
     }
 
-    let mut resp = req.send().ok()?;
+    let mut resp = match req.send() {
+        Ok(r) => r,
+        Err(e) => {
+            err!("http request failed: {}", e);
+            return None;
+        }
+    };
+
     if !resp.status().is_success() {
+        err!("http status error: {}", resp.status());
         return None;
     }
 
-    let mut tmp = tempfile::NamedTempFile::new().ok()?;
-    std::io::copy(&mut resp, &mut tmp).ok()?;
+    let mut tmp = match tempfile::NamedTempFile::new() {
+        Ok(t) => t,
+        Err(e) => {
+            err!("create temp file failed: {}", e);
+            return None;
+        }
+    };
+
+    if std::io::copy(&mut resp, &mut tmp).is_err() {
+        err!("copy http body failed");
+        return None;
+    }
 
     Some(tmp)
 }
@@ -466,7 +580,10 @@ fn upload_temp_to_http(
     let client = reqwest::blocking::Client::new();
     let bytes = match std::fs::read(tmp.path()) {
         Ok(b) => b,
-        Err(_) => return false,
+        Err(e) => {
+            err!("read temp file failed: {}", e);
+            return false;
+        }
     };
 
     let mut req = client.put(url).body(bytes);
@@ -475,5 +592,17 @@ fn upload_temp_to_http(
         req = req.basic_auth(u, Some(p));
     }
 
-    req.send().map(|r| r.status().is_success()).unwrap_or(false)
+    match req.send() {
+        Ok(r) => {
+            if !r.status().is_success() {
+                err!("upload failed: {}", r.status());
+                return false;
+            }
+            true
+        }
+        Err(e) => {
+            err!("upload request failed: {}", e);
+            false
+        }
+    }
 }
