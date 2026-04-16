@@ -56,10 +56,14 @@ pub struct LoftyPicture {
 
 #[repr(C)]
 pub struct LoftyMetadata {
+    pub format: *mut c_char,
+
     pub title: *mut c_char,
     pub artist: *mut c_char,
     pub album: *mut c_char,
+    pub album_artist: *mut c_char,
     pub genre: *mut c_char,
+
     pub year: u32,
     pub track: u32,
     pub track_total: u32,
@@ -209,7 +213,7 @@ pub extern "C" fn lofty_read_metadata(
     username: *const c_char,
     password: *const c_char,
 ) -> *mut LoftyMetadata {
-    let path = match c_path(path) {
+    let path_str = match c_path(path) {
         Some(p) => p,
         None => return ptr::null_mut(),
     };
@@ -217,7 +221,7 @@ pub extern "C" fn lofty_read_metadata(
     let username = c_path(username);
     let password = c_path(password);
 
-    let tagged_file = match read_tagged_file(path, need_picture, username, password) {
+    let tagged_file = match read_tagged_file(path_str, need_picture, username, password) {
         Some(v) => v,
         None => return ptr::null_mut(),
     };
@@ -226,9 +230,11 @@ pub extern "C" fn lofty_read_metadata(
     let props = tagged_file.properties();
 
     let meta = LoftyMetadata {
+        format: to_c_string(&format!("{:?}", tagged_file.file_type())),
         title: get_string(tag, ItemKey::TrackTitle),
         artist: get_string(tag, ItemKey::TrackArtist),
         album: get_string(tag, ItemKey::AlbumTitle),
+        album_artist: get_string(tag, ItemKey::AlbumArtist),
         genre: get_string(tag, ItemKey::Genre),
         year: get_year(tag),
         track: tag.and_then(|t| t.track()).unwrap_or(0) as u32,
@@ -281,6 +287,9 @@ pub extern "C" fn lofty_free_metadata(meta: *mut LoftyMetadata) {
     unsafe {
         let meta = Box::from_raw(meta);
 
+        if !meta.format.is_null() {
+            drop(CString::from_raw(meta.format));
+        }
         if !meta.title.is_null() {
             drop(CString::from_raw(meta.title));
         }
@@ -289,6 +298,9 @@ pub extern "C" fn lofty_free_metadata(meta: *mut LoftyMetadata) {
         }
         if !meta.album.is_null() {
             drop(CString::from_raw(meta.album));
+        }
+        if !meta.album_artist.is_null() {
+            drop(CString::from_raw(meta.album_artist));
         }
         if !meta.genre.is_null() {
             drop(CString::from_raw(meta.genre));
@@ -427,6 +439,7 @@ pub extern "C" fn lofty_write_metadata(
     title: *const c_char,
     artist: *const c_char,
     album: *const c_char,
+    album_artist: *const c_char,
     genre: *const c_char,
     lyrics: *const c_char,
     year: *const u32,
@@ -485,6 +498,7 @@ pub extern "C" fn lofty_write_metadata(
     if apply_string_field(tag, ItemKey::TrackTitle, title).is_err()
         || apply_string_field(tag, ItemKey::TrackArtist, artist).is_err()
         || apply_string_field(tag, ItemKey::AlbumTitle, album).is_err()
+        || apply_string_field(tag, ItemKey::AlbumArtist, album_artist).is_err()
         || apply_string_field(tag, ItemKey::Genre, genre).is_err()
         || apply_string_field(tag, ItemKey::Lyrics, lyrics).is_err()
         || apply_picture_field(tag, picture_data, picture_len).is_err()

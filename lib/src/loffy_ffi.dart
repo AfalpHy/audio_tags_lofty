@@ -11,9 +11,12 @@ final class LoftyPicture extends Struct {
 }
 
 final class LoftyMetadata extends Struct {
+  external Pointer<Utf8> format;
+
   external Pointer<Utf8> title;
   external Pointer<Utf8> artist;
   external Pointer<Utf8> album;
+  external Pointer<Utf8> albumArtist;
   external Pointer<Utf8> genre;
 
   @Uint32()
@@ -101,6 +104,7 @@ typedef _WriteMetadataNative =
       Pointer<Utf8> title,
       Pointer<Utf8> artist,
       Pointer<Utf8> album,
+      Pointer<Utf8> albumArtist,
       Pointer<Utf8> genre,
       Pointer<Utf8> lyrics,
       Pointer<Uint32> year,
@@ -120,6 +124,7 @@ typedef _WriteMetadataDart =
       Pointer<Utf8> title,
       Pointer<Utf8> artist,
       Pointer<Utf8> album,
+      Pointer<Utf8> albumArtist,
       Pointer<Utf8> genre,
       Pointer<Utf8> lyrics,
       Pointer<Uint32> year,
@@ -176,17 +181,18 @@ void _throwIfError() {
 
   if (errPtr != nullptr) {
     final msg = "[audio_tags_lofty] ${errPtr.toDartString()}";
-
     _clearRustError();
-
     throw Exception(msg);
   }
 }
 
 class AudioMetadata {
+  String? format;
+
   String? title;
   String? artist;
   String? album;
+  String? albumArtist;
   String? genre;
 
   int? year;
@@ -205,9 +211,11 @@ class AudioMetadata {
   Uint8List? pictureBytes;
 
   AudioMetadata({
+    this.format,
     this.title,
     this.artist,
     this.album,
+    this.albumArtist,
     this.genre,
     this.year,
     this.track,
@@ -223,9 +231,11 @@ class AudioMetadata {
 
   @override
   String toString() {
-    return "Title: $title\n"
+    return "Format: $format\n"
+        "Title: $title\n"
         "Artist: $artist\n"
         "Album: $album\n"
+        "AlbumArtist: $albumArtist\n"
         "Genre: $genre\n"
         "Year: $year\n"
         "Track: $track/$trackTotal\n"
@@ -273,9 +283,11 @@ AudioMetadata? readMetadata(
   }
 
   final result = AudioMetadata(
+    format: meta.format.toDartStringSafe(),
     title: meta.title.toDartStringSafe(),
     artist: meta.artist.toDartStringSafe(),
     album: meta.album.toDartStringSafe(),
+    albumArtist: meta.albumArtist.toDartStringSafe(),
     genre: meta.genre.toDartStringSafe(),
     year: meta.year == 0 ? null : meta.year,
     track: meta.track == 0 ? null : meta.track,
@@ -353,6 +365,7 @@ bool writeMetadata({
   String? title,
   String? artist,
   String? album,
+  String? albumArtist,
   String? genre,
   String? lyrics,
   int? year,
@@ -384,6 +397,7 @@ bool writeMetadata({
   final titlePtr = strPtr(title);
   final artistPtr = strPtr(artist);
   final albumPtr = strPtr(album);
+  final albumArtistPtr = strPtr(albumArtist);
   final genrePtr = strPtr(genre);
   final lyricsPtr = strPtr(lyrics);
 
@@ -410,6 +424,7 @@ bool writeMetadata({
     titlePtr,
     artistPtr,
     albumPtr,
+    albumArtistPtr,
     genrePtr,
     lyricsPtr,
     yearPtr,
@@ -430,6 +445,7 @@ bool writeMetadata({
   if (titlePtr != nullptr) calloc.free(titlePtr);
   if (artistPtr != nullptr) calloc.free(artistPtr);
   if (albumPtr != nullptr) calloc.free(albumPtr);
+  if (albumArtistPtr != nullptr) calloc.free(albumArtistPtr);
   if (genrePtr != nullptr) calloc.free(genrePtr);
   if (lyricsPtr != nullptr) calloc.free(lyricsPtr);
 
@@ -454,6 +470,7 @@ Future<bool> writeMetadataAsync({
   String? title,
   String? artist,
   String? album,
+  String? albumArtist,
   String? genre,
   String? lyrics,
   int? year,
@@ -472,6 +489,7 @@ Future<bool> writeMetadataAsync({
       title: title,
       artist: artist,
       album: album,
+      albumArtist: albumArtist,
       genre: genre,
       lyrics: lyrics,
       year: year,
