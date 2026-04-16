@@ -60,12 +60,34 @@ DynamicLibrary _loadLib() {
 final DynamicLibrary _lib = _loadLib();
 
 typedef _ReadMetadataNative =
-    Pointer<LoftyMetadata> Function(Pointer<Utf8> path, Uint8 needPicture);
-typedef _ReadMetadataDart =
-    Pointer<LoftyMetadata> Function(Pointer<Utf8> path, int needPicture);
+    Pointer<LoftyMetadata> Function(
+      Pointer<Utf8> path,
+      Uint8 needPicture,
+      Pointer<Utf8> username,
+      Pointer<Utf8> password,
+    );
 
-typedef _ReadPictureNative = Pointer<LoftyPicture> Function(Pointer<Utf8> path);
-typedef _ReadPictureDart = Pointer<LoftyPicture> Function(Pointer<Utf8> path);
+typedef _ReadMetadataDart =
+    Pointer<LoftyMetadata> Function(
+      Pointer<Utf8> path,
+      int needPicture,
+      Pointer<Utf8> username,
+      Pointer<Utf8> password,
+    );
+
+typedef _ReadPictureNative =
+    Pointer<LoftyPicture> Function(
+      Pointer<Utf8> path,
+      Pointer<Utf8> username,
+      Pointer<Utf8> password,
+    );
+
+typedef _ReadPictureDart =
+    Pointer<LoftyPicture> Function(
+      Pointer<Utf8> path,
+      Pointer<Utf8> username,
+      Pointer<Utf8> password,
+    );
 
 typedef _FreeMetadataNative = Void Function(Pointer<LoftyMetadata>);
 typedef _FreeMetadataDart = void Function(Pointer<LoftyMetadata>);
@@ -88,6 +110,8 @@ typedef _WriteMetadataNative =
       Pointer<Uint32> discTotal,
       Pointer<Uint8> pictureData,
       Uint64 pictureLen,
+      Pointer<Utf8> username,
+      Pointer<Utf8> password,
     );
 
 typedef _WriteMetadataDart =
@@ -105,6 +129,8 @@ typedef _WriteMetadataDart =
       Pointer<Uint32> discTotal,
       Pointer<Uint8> pictureData,
       int pictureLen,
+      Pointer<Utf8> username,
+      Pointer<Utf8> password,
     );
 
 final _loftyReadMetadata = _lib
@@ -183,10 +209,26 @@ class AudioMetadata {
   }
 }
 
-AudioMetadata? readMetadata(String path, bool needPicture) {
+AudioMetadata? readMetadata(
+  String path,
+  bool needPicture, {
+  String? username,
+  String? password,
+}) {
   final pathPtr = path.toNativeUtf8();
-  final metaPtr = _loftyReadMetadata(pathPtr, needPicture ? 1 : 0);
+  final userPtr = username?.toNativeUtf8() ?? nullptr;
+  final passPtr = password?.toNativeUtf8() ?? nullptr;
+
+  final metaPtr = _loftyReadMetadata(
+    pathPtr,
+    needPicture ? 1 : 0,
+    userPtr,
+    passPtr,
+  );
+
   calloc.free(pathPtr);
+  if (userPtr != nullptr) calloc.free(userPtr);
+  if (passPtr != nullptr) calloc.free(passPtr);
 
   if (metaPtr == nullptr) return null;
 
@@ -219,14 +261,28 @@ AudioMetadata? readMetadata(String path, bool needPicture) {
   return result;
 }
 
-Future<AudioMetadata?> readMetadataAsync(String path, bool needPicture) async {
-  return Isolate.run(() => readMetadata(path, needPicture));
+Future<AudioMetadata?> readMetadataAsync(
+  String path,
+  bool needPicture, {
+  String? username,
+  String? password,
+}) async {
+  return Isolate.run(
+    () =>
+        readMetadata(path, needPicture, username: username, password: password),
+  );
 }
 
-Uint8List? readPicture(String path) {
+Uint8List? readPicture(String path, {String? username, String? password}) {
   final pathPtr = path.toNativeUtf8();
-  final picPtr = _loftyReadPicture(pathPtr);
+  final userPtr = username?.toNativeUtf8() ?? nullptr;
+  final passPtr = password?.toNativeUtf8() ?? nullptr;
+
+  final picPtr = _loftyReadPicture(pathPtr, userPtr, passPtr);
+
   calloc.free(pathPtr);
+  if (userPtr != nullptr) calloc.free(userPtr);
+  if (passPtr != nullptr) calloc.free(passPtr);
 
   if (picPtr == nullptr) return null;
 
@@ -236,8 +292,14 @@ Uint8List? readPicture(String path) {
   return data;
 }
 
-Future<Uint8List?> readPictureAsync(String path) async {
-  return Isolate.run(() => readPicture(path));
+Future<Uint8List?> readPictureAsync(
+  String path, {
+  String? username,
+  String? password,
+}) async {
+  return Isolate.run(
+    () => readPicture(path, username: username, password: password),
+  );
 }
 
 /// ------------------------------------------------
@@ -265,8 +327,12 @@ bool writeMetadata({
   int? discTotal,
   Uint8List? pictureBytes,
   bool deletePicture = false,
+  String? username,
+  String? password,
 }) {
   final pathPtr = path.toNativeUtf8();
+  final userPtr = username?.toNativeUtf8() ?? nullptr;
+  final passPtr = password?.toNativeUtf8() ?? nullptr;
 
   Pointer<Utf8> strPtr(String? value) {
     if (value == null) return nullptr;
@@ -318,9 +384,14 @@ bool writeMetadata({
     discTotalPtr,
     picturePtr,
     pictureLen,
+    userPtr,
+    passPtr,
   );
 
   calloc.free(pathPtr);
+  if (userPtr != nullptr) calloc.free(userPtr);
+  if (passPtr != nullptr) calloc.free(passPtr);
+
   if (titlePtr != nullptr) calloc.free(titlePtr);
   if (artistPtr != nullptr) calloc.free(artistPtr);
   if (albumPtr != nullptr) calloc.free(albumPtr);
@@ -352,6 +423,8 @@ Future<bool> writeMetadataAsync({
   int? discTotal,
   Uint8List? pictureBytes,
   bool deletePicture = false,
+  String? username,
+  String? password,
 }) async {
   return Isolate.run(
     () => writeMetadata(
@@ -368,6 +441,8 @@ Future<bool> writeMetadataAsync({
       discTotal: discTotal,
       pictureBytes: pictureBytes,
       deletePicture: deletePicture,
+      username: username,
+      password: password,
     ),
   );
 }

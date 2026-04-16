@@ -53,9 +53,19 @@ fn to_c_string(s: &str) -> *mut c_char {
         .unwrap_or(ptr::null_mut())
 }
 
-fn read_tagged_file(path: &str, need_picture: bool) -> Option<TaggedFile> {
+fn read_tagged_file(
+    path: &str,
+    need_picture: bool,
+    username: Option<&str>,
+    password: Option<&str>,
+) -> Option<TaggedFile> {
     if path.starts_with("http://") || path.starts_with("https://") {
-        let http = HttpFile::new(path, if need_picture { 1024 } else { 512 })?;
+        let http = HttpFile::new(
+            path,
+            if need_picture { 1024 } else { 512 },
+            username,
+            password,
+        )?;
 
         return Probe::new(http)
             .guess_file_type()
@@ -115,13 +125,18 @@ fn get_year(tag: Option<&Tag>) -> u32 {
 pub extern "C" fn lofty_read_metadata(
     path: *const c_char,
     need_picture: bool,
+    username: *const c_char,
+    password: *const c_char,
 ) -> *mut LoftyMetadata {
     let path = match c_path(path) {
         Some(p) => p,
         None => return ptr::null_mut(),
     };
 
-    let tagged_file = match read_tagged_file(path, need_picture) {
+    let username = c_path(username);
+    let password = c_path(password);
+
+    let tagged_file = match read_tagged_file(path, need_picture, username, password) {
         Some(v) => v,
         None => return ptr::null_mut(),
     };
@@ -159,13 +174,20 @@ pub extern "C" fn lofty_read_metadata(
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn lofty_read_picture(path: *const c_char) -> *mut LoftyPicture {
+pub extern "C" fn lofty_read_picture(
+    path: *const c_char,
+    username: *const c_char,
+    password: *const c_char,
+) -> *mut LoftyPicture {
     let path = match c_path(path) {
         Some(p) => p,
         None => return ptr::null_mut(),
     };
 
-    let tagged_file = match read_tagged_file(path, true) {
+    let username = c_path(username);
+    let password = c_path(password);
+
+    let tagged_file = match read_tagged_file(path, true, username, password) {
         Some(v) => v,
         None => return ptr::null_mut(),
     };
@@ -328,17 +350,22 @@ pub extern "C" fn lofty_write_metadata(
     disc_total: *const u32,
     picture_data: *const u8,
     picture_len: usize,
+    username: *const c_char,
+    password: *const c_char,
 ) -> bool {
     let original_path = match c_path(path) {
         Some(p) => p,
         None => return false,
     };
 
+    let username = c_path(username);
+    let password = c_path(password);
+
     let mut temp_file_opt: Option<NamedTempFile> = None;
     let path_str: &str;
 
     if original_path.starts_with("http://") || original_path.starts_with("https://") {
-        let tmp = match download_http_to_temp(original_path) {
+        let tmp = match download_http_to_temp(original_path, username, password) {
             Some(f) => f,
             None => return false,
         };
@@ -355,7 +382,7 @@ pub extern "C" fn lofty_write_metadata(
         path_str = original_path;
     }
 
-    let mut tagged_file = match read_tagged_file(path_str, true) {
+    let mut tagged_file = match read_tagged_file(path_str, true, username, password) {
         Some(v) => v,
         None => return false,
     };
@@ -398,7 +425,7 @@ pub extern "C" fn lofty_write_metadata(
         .is_ok();
 
     if let Some(tmp) = temp_file_opt {
-        if !upload_temp_to_http(original_path, &tmp) {
+        if !upload_temp_to_http(original_path, &tmp, username, password) {
             return false;
         }
     }
@@ -406,29 +433,47 @@ pub extern "C" fn lofty_write_metadata(
     result
 }
 
-fn download_http_to_temp(url: &str) -> Option<tempfile::NamedTempFile> {
+fn download_http_to_temp(
+    url: &str,
+    username: Option<&str>,
+    password: Option<&str>,
+) -> Option<tempfile::NamedTempFile> {
     let client = reqwest::blocking::Client::new();
-    let mut resp = client.get(url).send().ok()?;
+
+    let mut req = client.get(url);
+
+    if let (Some(u), Some(p)) = (username, password) {
+        req = req.basic_auth(u, Some(p));
+    }
+
+    let mut resp = req.send().ok()?;
     if !resp.status().is_success() {
-        eprintln!("Download failed: {}", resp.status());
         return None;
     }
+
     let mut tmp = tempfile::NamedTempFile::new().ok()?;
     std::io::copy(&mut resp, &mut tmp).ok()?;
+
     Some(tmp)
 }
 
-fn upload_temp_to_http(url: &str, tmp: &tempfile::NamedTempFile) -> bool {
+fn upload_temp_to_http(
+    url: &str,
+    tmp: &tempfile::NamedTempFile,
+    username: Option<&str>,
+    password: Option<&str>,
+) -> bool {
     let client = reqwest::blocking::Client::new();
     let bytes = match std::fs::read(tmp.path()) {
         Ok(b) => b,
         Err(_) => return false,
     };
 
-    client
-        .put(url)
-        .body(bytes)
-        .send()
-        .map(|r| r.status().is_success())
-        .unwrap_or(false)
+    let mut req = client.put(url).body(bytes);
+
+    if let (Some(u), Some(p)) = (username, password) {
+        req = req.basic_auth(u, Some(p));
+    }
+
+    req.send().map(|r| r.status().is_success()).unwrap_or(false)
 }
