@@ -25,9 +25,11 @@ A Flutter FFI plugin based on [lofty](https://github.com/Serial-ATA/lofty-rs.git
 
 ~~~dart
 class AudioMetadata {
+  String? format;
   String? title;
   String? artist;
   String? album;
+  String? albumArtist;
   String? genre;
 
   int? year;
@@ -65,6 +67,7 @@ final success = writeMetadata(
   title: title,
   artist: artist,
   album: album,
+  albumArtist: albumArtist,
   genre: genre,
   year: year,
   track: track,
