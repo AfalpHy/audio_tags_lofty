@@ -51,7 +51,7 @@ pub extern "C" fn lofty_clear_error() {
 #[repr(C)]
 pub struct LoftyPicture {
     pub data: *mut u8,
-    pub len: usize,
+    pub len: u64,
 }
 
 #[repr(C)]
@@ -181,7 +181,7 @@ fn build_picture(tag: Option<&Tag>) -> *mut LoftyPicture {
 
     match picture {
         Some(mut data) => {
-            let len = data.len();
+            let len = data.len() as u64;
             let ptr = data.as_mut_ptr();
             std::mem::forget(data);
             Box::into_raw(Box::new(LoftyPicture { data: ptr, len }))
@@ -322,7 +322,11 @@ pub extern "C" fn lofty_free_picture(pic: *mut LoftyPicture) {
 
     unsafe {
         let pic = Box::from_raw(pic);
-        drop(Vec::from_raw_parts(pic.data, pic.len, pic.len));
+        drop(Vec::from_raw_parts(
+            pic.data,
+            pic.len as usize,
+            pic.len as usize,
+        ));
     }
 }
 
