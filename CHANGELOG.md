@@ -11,3 +11,9 @@
 * add format and album artist
 * add support for throwing error messages
 * add support for HTTP authentication
+
+## 0.0.4
+
+* fix: unalign len on armeabi-v7a
+* use header to replace username and password
+* fix: retrieving incorrect HTTP file length
