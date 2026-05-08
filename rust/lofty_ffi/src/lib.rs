@@ -12,6 +12,8 @@ use lofty::{
     tag::{Accessor, ItemKey, Tag},
 };
 
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+
 mod http_file;
 use http_file::HttpFile;
 
@@ -98,19 +100,43 @@ fn to_c_string(s: &str) -> *mut c_char {
         .unwrap_or(ptr::null_mut())
 }
 
-fn read_tagged_file(
-    path: &str,
-    need_picture: bool,
-    username: Option<&str>,
-    password: Option<&str>,
-) -> Option<TaggedFile> {
+fn parse_headers(headers: *const c_char) -> Option<HeaderMap> {
+    let mut map = HeaderMap::new();
+
+    if headers.is_null() {
+        return Some(map);
+    }
+
+    let text = c_path(headers)?;
+
+    for line in text.lines() {
+        let line = line.trim();
+
+        if line.is_empty() {
+            continue;
+        }
+
+        let (key, value) = match line.split_once(':') {
+            Some(v) => v,
+            None => continue,
+        };
+
+        let key = key.trim();
+        let value = value.trim();
+
+        let header_name = HeaderName::from_bytes(key.as_bytes()).ok()?;
+
+        let header_value = HeaderValue::from_str(value).ok()?;
+
+        map.insert(header_name, header_value);
+    }
+
+    Some(map)
+}
+
+fn read_tagged_file(path: &str, need_picture: bool, headers: HeaderMap) -> Option<TaggedFile> {
     if path.starts_with("http://") || path.starts_with("https://") {
-        let http = match HttpFile::new(
-            path,
-            if need_picture { 1024 } else { 512 },
-            username,
-            password,
-        ) {
+        let http = match HttpFile::new(path, if need_picture { 1024 } else { 512 }, headers) {
             Some(v) => v,
             None => {
                 err!("HttpFile::new failed");
@@ -120,8 +146,8 @@ fn read_tagged_file(
 
         let probe = match Probe::new(http).guess_file_type() {
             Ok(p) => p,
-            Err(_) => {
-                err!("guess_file_type failed");
+            Err(e) => {
+                err!("guess_file_type failed: {:?}", e);
                 return None;
             }
         };
@@ -152,8 +178,8 @@ fn read_tagged_file(
 
     let probe = match probe.guess_file_type() {
         Ok(p) => p,
-        Err(_) => {
-            err!("guess_file_type failed");
+        Err(e) => {
+            err!("guess_file_type failed: {:?}", e);
             return None;
         }
     };
@@ -210,18 +236,20 @@ fn get_year(tag: Option<&Tag>) -> u32 {
 pub extern "C" fn lofty_read_metadata(
     path: *const c_char,
     need_picture: bool,
-    username: *const c_char,
-    password: *const c_char,
+    headers: *const c_char,
 ) -> *mut LoftyMetadata {
     let path_str = match c_path(path) {
         Some(p) => p,
         None => return ptr::null_mut(),
     };
 
-    let username = c_path(username);
-    let password = c_path(password);
+    // Parse headers
+    let header_map = match parse_headers(headers) {
+        Some(v) => v,
+        None => return ptr::null_mut(),
+    };
 
-    let tagged_file = match read_tagged_file(path_str, need_picture, username, password) {
+    let tagged_file = match read_tagged_file(path_str, need_picture, header_map) {
         Some(v) => v,
         None => return ptr::null_mut(),
     };
@@ -258,18 +286,20 @@ pub extern "C" fn lofty_read_metadata(
 #[unsafe(no_mangle)]
 pub extern "C" fn lofty_read_picture(
     path: *const c_char,
-    username: *const c_char,
-    password: *const c_char,
+    headers: *const c_char,
 ) -> *mut LoftyPicture {
-    let path = match c_path(path) {
+    let path_str = match c_path(path) {
         Some(p) => p,
         None => return ptr::null_mut(),
     };
 
-    let username = c_path(username);
-    let password = c_path(password);
+    // Parse headers
+    let header_map = match parse_headers(headers) {
+        Some(v) => v,
+        None => return ptr::null_mut(),
+    };
 
-    let tagged_file = match read_tagged_file(path, true, username, password) {
+    let tagged_file = match read_tagged_file(path_str, true, header_map) {
         Some(v) => v,
         None => return ptr::null_mut(),
     };
@@ -440,42 +470,56 @@ fn apply_picture_field(tag: &mut Tag, data: *const u8, len: usize) -> Result<(),
 #[unsafe(no_mangle)]
 pub extern "C" fn lofty_write_metadata(
     path: *const c_char,
+
     title: *const c_char,
     artist: *const c_char,
     album: *const c_char,
     album_artist: *const c_char,
     genre: *const c_char,
     lyrics: *const c_char,
+
     year: *const u32,
+
     track: *const u32,
     track_total: *const u32,
+
     disc: *const u32,
     disc_total: *const u32,
+
     picture_data: *const u8,
     picture_len: usize,
-    username: *const c_char,
-    password: *const c_char,
+
+    headers: *const c_char,
 ) -> bool {
     let original_path = match c_path(path) {
         Some(p) => p,
         None => return false,
     };
 
-    let username = c_path(username);
-    let password = c_path(password);
+    let headers = match parse_headers(headers) {
+        Some(h) => h,
+        None => {
+            err!("parse_headers failed");
+            return false;
+        }
+    };
 
     let mut temp_file_opt: Option<NamedTempFile> = None;
+
     let path_str: &str;
 
+    // HTTP/WebDAV
     if original_path.starts_with("http://") || original_path.starts_with("https://") {
-        let tmp = match download_http_to_temp(original_path, username, password) {
+        let tmp = match download_http_to_temp(original_path, &headers) {
             Some(f) => f,
             None => {
                 err!("download_http_to_temp failed");
                 return false;
             }
         };
+
         temp_file_opt = Some(tmp);
+
         path_str = temp_file_opt
             .as_ref()
             .unwrap()
@@ -486,7 +530,7 @@ pub extern "C" fn lofty_write_metadata(
         path_str = original_path;
     }
 
-    let mut tagged_file = match read_tagged_file(path_str, true, username, password) {
+    let mut tagged_file = match read_tagged_file(path_str, true, headers.clone()) {
         Some(v) => v,
         None => return false,
     };
@@ -537,8 +581,9 @@ pub extern "C" fn lofty_write_metadata(
         }
     };
 
+    // upload back
     if let Some(tmp) = temp_file_opt {
-        if !upload_temp_to_http(original_path, &tmp, username, password) {
+        if !upload_temp_to_http(original_path, &tmp, &headers) {
             err!("upload_temp_to_http failed");
             return false;
         }
@@ -547,20 +592,10 @@ pub extern "C" fn lofty_write_metadata(
     result
 }
 
-fn download_http_to_temp(
-    url: &str,
-    username: Option<&str>,
-    password: Option<&str>,
-) -> Option<tempfile::NamedTempFile> {
+fn download_http_to_temp(url: &str, headers: &HeaderMap) -> Option<tempfile::NamedTempFile> {
     let client = reqwest::blocking::Client::new();
 
-    let mut req = client.get(url);
-
-    if let (Some(u), Some(p)) = (username, password) {
-        req = req.basic_auth(u, Some(p));
-    }
-
-    let mut resp = match req.send() {
+    let mut resp = match client.get(url).headers(headers.clone()).send() {
         Ok(r) => r,
         Err(e) => {
             err!("http request failed: {}", e);
@@ -589,13 +624,9 @@ fn download_http_to_temp(
     Some(tmp)
 }
 
-fn upload_temp_to_http(
-    url: &str,
-    tmp: &tempfile::NamedTempFile,
-    username: Option<&str>,
-    password: Option<&str>,
-) -> bool {
+fn upload_temp_to_http(url: &str, tmp: &tempfile::NamedTempFile, headers: &HeaderMap) -> bool {
     let client = reqwest::blocking::Client::new();
+
     let bytes = match std::fs::read(tmp.path()) {
         Ok(b) => b,
         Err(e) => {
@@ -604,11 +635,7 @@ fn upload_temp_to_http(
         }
     };
 
-    let mut req = client.put(url).body(bytes);
-
-    if let (Some(u), Some(p)) = (username, password) {
-        req = req.basic_auth(u, Some(p));
-    }
+    let req = client.put(url).headers(headers.clone()).body(bytes);
 
     match req.send() {
         Ok(r) => {
@@ -616,6 +643,7 @@ fn upload_temp_to_http(
                 err!("upload failed: {}", r.status());
                 return false;
             }
+
             true
         }
         Err(e) => {

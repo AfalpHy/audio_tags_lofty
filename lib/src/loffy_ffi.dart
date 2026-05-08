@@ -66,76 +66,78 @@ typedef _ReadMetadataNative =
     Pointer<LoftyMetadata> Function(
       Pointer<Utf8> path,
       Uint8 needPicture,
-      Pointer<Utf8> username,
-      Pointer<Utf8> password,
+      Pointer<Utf8> headers,
     );
 
 typedef _ReadMetadataDart =
     Pointer<LoftyMetadata> Function(
       Pointer<Utf8> path,
       int needPicture,
-      Pointer<Utf8> username,
-      Pointer<Utf8> password,
+      Pointer<Utf8> headers,
     );
 
 typedef _ReadPictureNative =
-    Pointer<LoftyPicture> Function(
-      Pointer<Utf8> path,
-      Pointer<Utf8> username,
-      Pointer<Utf8> password,
-    );
+    Pointer<LoftyPicture> Function(Pointer<Utf8> path, Pointer<Utf8> headers);
 
 typedef _ReadPictureDart =
-    Pointer<LoftyPicture> Function(
-      Pointer<Utf8> path,
-      Pointer<Utf8> username,
-      Pointer<Utf8> password,
-    );
+    Pointer<LoftyPicture> Function(Pointer<Utf8> path, Pointer<Utf8> headers);
 
 typedef _FreeMetadataNative = Void Function(Pointer<LoftyMetadata>);
+
 typedef _FreeMetadataDart = void Function(Pointer<LoftyMetadata>);
 
 typedef _FreePictureNative = Void Function(Pointer<LoftyPicture>);
+
 typedef _FreePictureDart = void Function(Pointer<LoftyPicture>);
 
 typedef _WriteMetadataNative =
     Uint8 Function(
       Pointer<Utf8> path,
+
       Pointer<Utf8> title,
       Pointer<Utf8> artist,
       Pointer<Utf8> album,
       Pointer<Utf8> albumArtist,
       Pointer<Utf8> genre,
       Pointer<Utf8> lyrics,
+
       Pointer<Uint32> year,
+
       Pointer<Uint32> track,
       Pointer<Uint32> trackTotal,
+
       Pointer<Uint32> disc,
       Pointer<Uint32> discTotal,
+
       Pointer<Uint8> pictureData,
       Uint64 pictureLen,
-      Pointer<Utf8> username,
-      Pointer<Utf8> password,
+
+      Pointer<Utf8> headers,
     );
 
 typedef _WriteMetadataDart =
     int Function(
       Pointer<Utf8> path,
+
       Pointer<Utf8> title,
       Pointer<Utf8> artist,
       Pointer<Utf8> album,
       Pointer<Utf8> albumArtist,
       Pointer<Utf8> genre,
       Pointer<Utf8> lyrics,
+
       Pointer<Uint32> year,
+
       Pointer<Uint32> track,
       Pointer<Uint32> trackTotal,
+
       Pointer<Uint32> disc,
       Pointer<Uint32> discTotal,
+
       Pointer<Uint8> pictureData,
       int pictureLen,
-      Pointer<Utf8> username,
-      Pointer<Utf8> password,
+
+      Pointer<Utf8> headers,
     );
 
 typedef _LastErrorNative = Pointer<Utf8> Function();
@@ -251,23 +253,27 @@ class AudioMetadata {
 AudioMetadata? readMetadata(
   String path,
   bool needPicture, {
-  String? username,
-  String? password,
+  Map<String, String>? headers,
 }) {
   final pathPtr = path.toNativeUtf8();
-  final userPtr = username?.toNativeUtf8() ?? nullptr;
-  final passPtr = password?.toNativeUtf8() ?? nullptr;
 
-  final metaPtr = _loftyReadMetadata(
-    pathPtr,
-    needPicture ? 1 : 0,
-    userPtr,
-    passPtr,
-  );
+  Pointer<Utf8> headersPtr = nullptr;
+
+  if (headers != null) {
+    final headersStr = headers.entries
+        .map((e) => '${e.key}: ${e.value}')
+        .join('\n');
+
+    headersPtr = headersStr.toNativeUtf8();
+  }
+
+  final metaPtr = _loftyReadMetadata(pathPtr, needPicture ? 1 : 0, headersPtr);
 
   calloc.free(pathPtr);
-  if (userPtr != nullptr) calloc.free(userPtr);
-  if (passPtr != nullptr) calloc.free(passPtr);
+
+  if (headersPtr != nullptr) {
+    calloc.free(headersPtr);
+  }
 
   if (metaPtr == nullptr) {
     _throwIfError();
@@ -308,25 +314,29 @@ AudioMetadata? readMetadata(
 Future<AudioMetadata?> readMetadataAsync(
   String path,
   bool needPicture, {
-  String? username,
-  String? password,
+  Map<String, String>? headers,
 }) async {
-  return Isolate.run(
-    () =>
-        readMetadata(path, needPicture, username: username, password: password),
-  );
+  return Isolate.run(() => readMetadata(path, needPicture, headers: headers));
 }
 
-Uint8List? readPicture(String path, {String? username, String? password}) {
+Uint8List? readPicture(String path, {Map<String, String>? headers}) {
   final pathPtr = path.toNativeUtf8();
-  final userPtr = username?.toNativeUtf8() ?? nullptr;
-  final passPtr = password?.toNativeUtf8() ?? nullptr;
+  Pointer<Utf8> headersPtr = nullptr;
 
-  final picPtr = _loftyReadPicture(pathPtr, userPtr, passPtr);
+  if (headers != null) {
+    final headersStr = headers.entries
+        .map((e) => '${e.key}: ${e.value}')
+        .join('\n');
+
+    headersPtr = headersStr.toNativeUtf8();
+  }
+
+  final picPtr = _loftyReadPicture(pathPtr, headersPtr);
 
   calloc.free(pathPtr);
-  if (userPtr != nullptr) calloc.free(userPtr);
-  if (passPtr != nullptr) calloc.free(passPtr);
+  if (headersPtr != nullptr) {
+    calloc.free(headersPtr);
+  }
 
   if (picPtr == nullptr) {
     _throwIfError();
@@ -341,12 +351,9 @@ Uint8List? readPicture(String path, {String? username, String? password}) {
 
 Future<Uint8List?> readPictureAsync(
   String path, {
-  String? username,
-  String? password,
+  Map<String, String>? headers,
 }) async {
-  return Isolate.run(
-    () => readPicture(path, username: username, password: password),
-  );
+  return Isolate.run(() => readPicture(path, headers: headers));
 }
 
 /// ------------------------------------------------
@@ -362,25 +369,38 @@ Future<Uint8List?> readPictureAsync(
 /// ------------------------------------------------
 bool writeMetadata({
   required String path,
+
   String? title,
   String? artist,
   String? album,
   String? albumArtist,
   String? genre,
   String? lyrics,
+
   int? year,
+
   int? track,
   int? trackTotal,
+
   int? disc,
   int? discTotal,
+
   Uint8List? pictureBytes,
   bool deletePicture = false,
-  String? username,
-  String? password,
+
+  Map<String, String>? headers,
 }) {
   final pathPtr = path.toNativeUtf8();
-  final userPtr = username?.toNativeUtf8() ?? nullptr;
-  final passPtr = password?.toNativeUtf8() ?? nullptr;
+
+  Pointer<Utf8> headersPtr = nullptr;
+
+  if (headers != null) {
+    final headersStr = headers.entries
+        .map((e) => '${e.key}: ${e.value}')
+        .join('\n');
+
+    headersPtr = headersStr.toNativeUtf8();
+  }
 
   Pointer<Utf8> strPtr(String? value) {
     if (value == null) return nullptr;
@@ -389,8 +409,10 @@ bool writeMetadata({
 
   Pointer<Uint32> intPtr(int? value) {
     if (value == null) return nullptr;
+
     final p = calloc<Uint32>();
     p.value = value;
+
     return p;
   }
 
@@ -402,8 +424,10 @@ bool writeMetadata({
   final lyricsPtr = strPtr(lyrics);
 
   final yearPtr = intPtr(year);
+
   final trackPtr = intPtr(track);
   final trackTotalPtr = intPtr(trackTotal);
+
   final discPtr = intPtr(disc);
   final discTotalPtr = intPtr(discTotal);
 
@@ -412,50 +436,71 @@ bool writeMetadata({
 
   if (pictureBytes != null) {
     picturePtr = calloc<Uint8>(pictureBytes.length);
+
     picturePtr.asTypedList(pictureBytes.length).setAll(0, pictureBytes);
+
     pictureLen = pictureBytes.length;
   } else if (deletePicture) {
     picturePtr = nullptr;
+
+    // special marker for delete
     pictureLen = 1;
   }
 
   final result = _loftyWriteMetadata(
     pathPtr,
+
     titlePtr,
     artistPtr,
     albumPtr,
     albumArtistPtr,
     genrePtr,
     lyricsPtr,
+
     yearPtr,
+
     trackPtr,
     trackTotalPtr,
+
     discPtr,
     discTotalPtr,
+
     picturePtr,
     pictureLen,
-    userPtr,
-    passPtr,
+
+    headersPtr,
   );
 
   calloc.free(pathPtr);
-  if (userPtr != nullptr) calloc.free(userPtr);
-  if (passPtr != nullptr) calloc.free(passPtr);
+
+  if (headersPtr != nullptr) {
+    calloc.free(headersPtr);
+  }
 
   if (titlePtr != nullptr) calloc.free(titlePtr);
   if (artistPtr != nullptr) calloc.free(artistPtr);
   if (albumPtr != nullptr) calloc.free(albumPtr);
-  if (albumArtistPtr != nullptr) calloc.free(albumArtistPtr);
+  if (albumArtistPtr != nullptr) {
+    calloc.free(albumArtistPtr);
+  }
   if (genrePtr != nullptr) calloc.free(genrePtr);
   if (lyricsPtr != nullptr) calloc.free(lyricsPtr);
 
   if (yearPtr != nullptr) calloc.free(yearPtr);
-  if (trackPtr != nullptr) calloc.free(trackPtr);
-  if (trackTotalPtr != nullptr) calloc.free(trackTotalPtr);
-  if (discPtr != nullptr) calloc.free(discPtr);
-  if (discTotalPtr != nullptr) calloc.free(discTotalPtr);
 
-  if (picturePtr != nullptr) calloc.free(picturePtr);
+  if (trackPtr != nullptr) calloc.free(trackPtr);
+  if (trackTotalPtr != nullptr) {
+    calloc.free(trackTotalPtr);
+  }
+
+  if (discPtr != nullptr) calloc.free(discPtr);
+  if (discTotalPtr != nullptr) {
+    calloc.free(discTotalPtr);
+  }
+
+  if (picturePtr != nullptr) {
+    calloc.free(picturePtr);
+  }
 
   if (result == 0) {
     _throwIfError();
@@ -480,8 +525,7 @@ Future<bool> writeMetadataAsync({
   int? discTotal,
   Uint8List? pictureBytes,
   bool deletePicture = false,
-  String? username,
-  String? password,
+  Map<String, String>? headers,
 }) async {
   return Isolate.run(
     () => writeMetadata(
@@ -499,8 +543,7 @@ Future<bool> writeMetadataAsync({
       discTotal: discTotal,
       pictureBytes: pictureBytes,
       deletePicture: deletePicture,
-      username: username,
-      password: password,
+      headers: headers,
     ),
   );
 }

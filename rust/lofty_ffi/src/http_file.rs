@@ -1,4 +1,5 @@
 use reqwest::blocking::Client;
+use reqwest::header::{HeaderMap, RANGE};
 use std::collections::BTreeMap;
 use std::io::{Error, ErrorKind, Read, Result, Seek, SeekFrom};
 
@@ -7,77 +8,84 @@ pub struct HttpFile {
     url: String,
     pos: u64,
     len: u64,
-    // Storage for downloaded data segments to prevent re-downloading
+
+    headers: HeaderMap,
+
     chunks: BTreeMap<u64, Vec<u8>>,
-    // Size of each network request
     chunk_size: u64,
 
-    // Optional authentication
-    username: Option<String>,
-    password: Option<String>,
+    full_data: Option<Vec<u8>>,
 }
 
 impl HttpFile {
-    /// Creates a new HttpFile instance.
-    /// @param url: Target HTTP/WebDAV URL
-    /// @param chunk_size_kb: Chunk size in KB
-    /// @param username/password: Optional Basic Auth credentials
-    pub fn new(
-        url: &str,
-        chunk_size_kb: u64,
-        username: Option<&str>,
-        password: Option<&str>,
-    ) -> Option<Self> {
+    pub fn new(url: &str, chunk_size_kb: u64, headers: HeaderMap) -> Option<Self> {
         let client = Client::new();
 
-        let mut req = client.head(url);
+        let resp = client
+            .get(url)
+            .headers(headers.clone())
+            .header(RANGE, "bytes=0-0")
+            .send()
+            .ok();
 
-        // Apply Basic Auth if provided
-        if let (Some(u), Some(p)) = (username, password) {
-            req = req.basic_auth(u, Some(p));
-        }
+        let (range_supported, mut len) = if let Some(resp) = resp {
+            let supported = resp.status() == reqwest::StatusCode::PARTIAL_CONTENT;
 
-        let resp = req.send().ok()?;
+            let size = if supported {
+                resp.headers()
+                    .get(reqwest::header::CONTENT_RANGE)
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|v| v.split('/').nth(1))
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .unwrap_or(0)
+            } else {
+                0
+            };
 
-        let len = resp
-            .headers()
-            .get(reqwest::header::CONTENT_LENGTH)?
-            .to_str()
-            .ok()?
-            .parse::<u64>()
-            .ok()?;
+            (supported, size)
+        } else {
+            (false, 0)
+        };
+
+        let full_data = if !range_supported {
+            let mut resp = client.get(url).headers(headers.clone()).send().ok()?;
+
+            let mut data = Vec::new();
+            std::io::copy(&mut resp, &mut data).ok()?;
+
+            len = data.len() as u64;
+            Some(data)
+        } else {
+            None
+        };
 
         Some(Self {
             client,
             url: url.to_string(),
             pos: 0,
             len,
+            headers,
             chunks: BTreeMap::new(),
             chunk_size: chunk_size_kb * 1024,
-            username: username.map(|s| s.to_string()),
-            password: password.map(|s| s.to_string()),
+            full_data,
         })
     }
 
-    /// Fetch a chunk from cache or server
-    fn get_or_fetch_chunk(&mut self, position: u64) -> Result<&Vec<u8>> {
+    fn ensure_chunk(&mut self, position: u64) -> Result<&Vec<u8>> {
         let chunk_start = (position / self.chunk_size) * self.chunk_size;
 
         if !self.chunks.contains_key(&chunk_start) {
-            let end = (chunk_start + self.chunk_size - 1).min(self.len - 1);
+            let end = (chunk_start + self.chunk_size - 1).min(self.len.saturating_sub(1));
+
             let range = format!("bytes={}-{}", chunk_start, end);
 
-            let mut req = self
+            let mut resp = self
                 .client
                 .get(&self.url)
-                .header(reqwest::header::RANGE, range);
-
-            // Apply Basic Auth if provided
-            if let (Some(u), Some(p)) = (&self.username, &self.password) {
-                req = req.basic_auth(u, Some(p));
-            }
-
-            let mut resp = req.send().map_err(|e| Error::new(ErrorKind::Other, e))?;
+                .headers(self.headers.clone())
+                .header(RANGE, range)
+                .send()
+                .map_err(|e| Error::new(ErrorKind::Other, e))?;
 
             let mut data = Vec::new();
             resp.read_to_end(&mut data)
@@ -96,21 +104,35 @@ impl Read for HttpFile {
             return Ok(0);
         }
 
+        if let Some(ref data) = self.full_data {
+            let available = data.len().saturating_sub(self.pos as usize);
+            if available == 0 {
+                return Ok(0);
+            }
+
+            let n = buf.len().min(available);
+
+            buf[..n].copy_from_slice(&data[self.pos as usize..self.pos as usize + n]);
+
+            self.pos += n as u64;
+            return Ok(n);
+        }
+
         let current_pos = self.pos;
-        let c_size = self.chunk_size;
+        let chunk_size = self.chunk_size;
 
-        let chunk_data = self.get_or_fetch_chunk(current_pos)?;
+        let chunk = self.ensure_chunk(current_pos)?;
 
-        let offset_in_chunk = (current_pos % c_size) as usize;
+        let offset = (current_pos % chunk_size) as usize;
+        let available = chunk.len().saturating_sub(offset);
 
-        let available = chunk_data.len().saturating_sub(offset_in_chunk);
         if available == 0 {
             return Ok(0);
         }
 
-        let n = std::cmp::min(buf.len(), available);
+        let n = buf.len().min(available);
 
-        buf[..n].copy_from_slice(&chunk_data[offset_in_chunk..offset_in_chunk + n]);
+        buf[..n].copy_from_slice(&chunk[offset..offset + n]);
 
         self.pos += n as u64;
 
@@ -127,7 +149,7 @@ impl Seek for HttpFile {
         };
 
         if new_pos < 0 {
-            return Err(Error::new(ErrorKind::InvalidInput, "Negative seek"));
+            return Err(Error::new(ErrorKind::InvalidInput, "negative seek"));
         }
 
         self.pos = new_pos as u64;
