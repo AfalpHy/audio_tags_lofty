@@ -17,3 +17,7 @@
 * fix: unalign len on armeabi-v7a
 * use header to replace username and password
 * fix: retrieving incorrect HTTP file length
+
+## 0.0.5
+
+* feat: add support for unsyncedlyrics in flac
