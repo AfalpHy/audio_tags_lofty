@@ -9,10 +9,15 @@ let package = Package(
     products: [
         .library(
             name: "audio_tags_lofty",
-            targets: ["LoftyFFI"]
+            targets: ["audio_tags_lofty"]
         )
     ],
     targets: [
+        .target(
+            name: "audio_tags_lofty",
+            dependencies: ["LoftyFFI"],
+            path: "Sources" 
+        ),
         .binaryTarget(
             name: "LoftyFFI",
             path: "LoftyFFI.xcframework"
