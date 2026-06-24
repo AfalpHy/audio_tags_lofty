@@ -1,8 +1,8 @@
-use std::ffi::{c_char, CStr, CString};
+use std::ffi::{CStr, CString, c_char};
 use std::ptr;
 use std::sync::Mutex;
 
-use lofty::file::{TaggedFile, TaggedFileExt};
+use lofty::file::{FileType, TaggedFile, TaggedFileExt};
 use lofty::prelude::AudioFile;
 
 use lofty::{
@@ -272,7 +272,14 @@ pub extern "C" fn lofty_read_metadata(
         bitrate: props.audio_bitrate().unwrap_or(0) as u32,
         samplerate: props.sample_rate().unwrap_or(0) as u32,
         duration_ms: props.duration().as_millis() as u64,
-        lyrics: get_string(tag, ItemKey::Lyrics),
+        lyrics: {
+            let l = get_string(tag, ItemKey::Lyrics);
+            if !l.is_null() {
+                l
+            } else {
+                get_string(tag, ItemKey::UnsyncLyrics)
+            }
+        },
         picture: if need_picture {
             build_picture(tag)
         } else {
@@ -534,6 +541,7 @@ pub extern "C" fn lofty_write_metadata(
         Some(v) => v,
         None => return false,
     };
+    let file_type = tagged_file.file_type();
 
     let tag = match tagged_file.primary_tag_mut() {
         Some(t) => t,
@@ -548,7 +556,16 @@ pub extern "C" fn lofty_write_metadata(
         || apply_string_field(tag, ItemKey::AlbumTitle, album).is_err()
         || apply_string_field(tag, ItemKey::AlbumArtist, album_artist).is_err()
         || apply_string_field(tag, ItemKey::Genre, genre).is_err()
-        || apply_string_field(tag, ItemKey::Lyrics, lyrics).is_err()
+        || apply_string_field(
+            tag,
+            if file_type == FileType::Mpeg {
+                ItemKey::UnsyncLyrics
+            } else {
+                ItemKey::Lyrics
+            },
+            lyrics,
+        )
+        .is_err()
         || apply_picture_field(tag, picture_data, picture_len).is_err()
     {
         err!("apply field failed");

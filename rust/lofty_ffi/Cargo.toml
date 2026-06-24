@@ -1,6 +1,6 @@
 [package]
 name = "lofty_ffi"
-version = "0.0.4"
+version = "0.0.5"
 edition = "2024"
 publish = false
 
@@ -8,6 +8,6 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-lofty = "0.23"
+lofty = "0.24"
 tempfile = "3.6" 
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls", "rustls-tls-native-roots"] }
