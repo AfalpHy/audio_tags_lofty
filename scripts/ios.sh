@@ -55,6 +55,10 @@ create_framework() {
   <string>LoftyFFI</string>
   <key>CFBundleVersion</key>
   <string>1</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0.0</string>
+  <key>MinimumOSVersion</key>
+  <string>14.0</string>
 </dict>
 </plist>
 EOF
