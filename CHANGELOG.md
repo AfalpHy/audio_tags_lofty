@@ -21,3 +21,7 @@
 ## 0.0.5
 
 * feat: add support for unsyncedlyrics in flac
+
+## 0.0.6
+
+* fix: update ios and macos Info.plist for app store compliance
