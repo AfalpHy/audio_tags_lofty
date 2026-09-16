@@ -1,16 +1,14 @@
-## 0.0.1
+## 0.0.7
 
-* Implement basic read/write functionality
+* Add Flutter Swift Package Manager support for iOS and macOS.
 
-## 0.0.2
+## 0.0.6
 
-* support read/write http file
+* fix: update ios and macos Info.plist for app store compliance
 
-## 0.0.3
+## 0.0.5
 
-* add format and album artist
-* add support for throwing error messages
-* add support for HTTP authentication
+* feat: add support for unsyncedlyrics in flac
 
 ## 0.0.4
 
@@ -18,10 +16,16 @@
 * use header to replace username and password
 * fix: retrieving incorrect HTTP file length
 
-## 0.0.5
+## 0.0.3
 
-* feat: add support for unsyncedlyrics in flac
+* add format and album artist
+* add support for throwing error messages
+* add support for HTTP authentication
 
-## 0.0.6
+## 0.0.2
 
-* fix: update ios and macos Info.plist for app store compliance
+* support read/write http file
+
+## 0.0.1
+
+* Implement basic read/write functionality
