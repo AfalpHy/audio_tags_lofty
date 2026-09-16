@@ -2,6 +2,13 @@
 
 A Flutter FFI plugin based on [lofty](https://github.com/Serial-ATA/lofty-rs.git) for reading and writing audio tags.
 
+## Apple dependencies
+
+The plugin supports both CocoaPods and Flutter's Swift Package Manager
+integration on iOS and macOS. Flutter 3.44 or later selects the appropriate
+integration automatically; no manual package dependency needs to be added to
+the Runner target.
+
 ## Supported Formats
 
 | File Format | Metadata Format(s)           |

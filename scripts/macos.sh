@@ -6,7 +6,7 @@ CRATE="$ROOT/rust/lofty_ffi"
 
 TMP="$ROOT/build/macos"
 FRAMEWORK="$TMP/LoftyFFI.framework"
-OUT="$ROOT/macos/LoftyFFI.xcframework"
+OUT="$ROOT/macos/audio_tags_lofty/LoftyFFI.xcframework"
 
 rm -rf "$TMP" "$OUT"
 

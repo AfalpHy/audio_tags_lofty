@@ -14,7 +14,7 @@ A new Flutter FFI plugin project.
   s.author           = { 'Your Company' => 'email@example.com' }
 
   s.source           = { :path => '.' }
-  s.vendored_frameworks = 'LoftyFFI.xcframework'
+  s.vendored_frameworks = 'audio_tags_lofty/LoftyFFI.xcframework'
 
   s.dependency 'FlutterMacOS'
 

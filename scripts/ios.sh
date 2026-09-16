@@ -3,7 +3,7 @@ set -e
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CRATE="$ROOT/rust/lofty_ffi"
-OUT="$ROOT/ios/LoftyFFI.xcframework"
+OUT="$ROOT/ios/audio_tags_lofty/LoftyFFI.xcframework"
 TMP="$ROOT/ios/.tmp"
 
 echo "== iOS dynamic framework build =="
