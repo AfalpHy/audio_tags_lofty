@@ -1,6 +1,10 @@
+## 0.0.8
+
+* Eliminate link warning on macOS
+
 ## 0.0.7
 
-* Add Flutter Swift Package Manager support for iOS and macOS.
+* Add Flutter Swift Package Manager support for iOS and macOS
 
 ## 0.0.6
 

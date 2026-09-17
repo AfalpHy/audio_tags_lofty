@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'audio_tags_lofty'
-  s.version          = '0.0.7'
+  s.version          = '0.0.8'
   s.summary          = 'A new Flutter FFI plugin project.'
   s.description      = <<-DESC
 A new Flutter FFI plugin project.
