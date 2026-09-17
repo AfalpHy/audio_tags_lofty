@@ -1,3 +1,7 @@
+## 0.0.9
+
+* Eliminate link warning on macOS
+
 ## 0.0.8
 
 * Eliminate link warning on macOS
