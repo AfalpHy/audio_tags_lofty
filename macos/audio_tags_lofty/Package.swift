@@ -36,7 +36,7 @@ let package = Package(
         ),
         .binaryTarget(
             name: "LoftyFFI",
-            url: "https://github.com/AfalpHy/audio_tags_lofty/releases/download/v0.0.8/LoftyFFI-macos-0.0.9.zip",
+            url: "https://github.com/AfalpHy/audio_tags_lofty/releases/download/v0.0.9/LoftyFFI-macos-0.0.9.zip",
             checksum: "7f922be5ca91f27634257bfe3a9f72f418b8f363d82f72e985f47ba5af97f1fe"
         ),
     ]
